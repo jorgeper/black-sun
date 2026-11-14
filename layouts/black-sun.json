@@ -58,6 +58,16 @@
               }
             },
             {
+              "id": "mcps",
+              "type": "block",
+              "content": {
+                "mod": "mcp-tree"
+              },
+              "size": {
+                "px": 32
+              }
+            },
+            {
               "id": "usage",
               "type": "block",
               "content": {

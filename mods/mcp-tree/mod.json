@@ -1,0 +1,9 @@
+{
+  "place": "none",
+  "title": "MCP servers",
+  "overlay": {
+    "width": 560,
+    "height": 640
+  },
+  "source": "https://github.com/jorgeper/black-sun"
+}
