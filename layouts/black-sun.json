@@ -40,12 +40,12 @@
               "id": "agents",
               "type": "block",
               "content": {
-                "mod": "agents"
+                "mod": "agents-list"
               },
               "size": {
                 "weight": 1
               },
-              "min": 90
+              "min": 41
             },
             {
               "id": "skills",

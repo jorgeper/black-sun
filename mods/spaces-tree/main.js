@@ -6,7 +6,10 @@
 
 import { View, div, svg, image } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";
-import { spaces, machines, panes, agents, run, openOverlay, exec, hc, theme, shared, setShared, watchFolder, window, layout } from "herdr";
+import { spaces, machines, panes, agents, run, openOverlay, exec, hc, theme, shared, setShared, watchFolder, window, layout, nextCommand, notify, knownAgents } from "herdr";
+import { syncTargets, shortTitle, rowLabel, nameable, NEW, TAB_WORDS, ROW_WORDS } from "./names.js";
+import { autoName, shortenTitle } from "./autoname.js";
+import { duration, track } from "./times.js";
 
 function find(node, id) {
   if (node?.id === id) return node;
@@ -50,22 +53,10 @@ export function tone(t, status) {
 
 // Agent rows: their icon, a name and their state, as the agents list draws them.
 const RANK = { blocked: 4, done: 3, working: 2, idle: 1 };
-const clean = (s) => (s ?? "").replace(/^[^\p{L}\p{N}]+/u, "").trim();
 
 function agentIcon(p, size, color) {
   if (!p?.icon) return null;
   return p.tint ? svg(p.icon).size(size).flex_none().text_color(color) : image(p.icon).w(size).h(size).flex_none();
-}
-
-// The agent's own title when it says something, else its tab's name, else the program.
-function agentLabel(a, tab) {
-  const prog = a.program?.name;
-  const live = clean(a.title);
-  const path = /^[~/]|^[A-Za-z]:\\/.test((a.title ?? "").replace(/^[^\p{L}\p{N}~/]+/u, ""));
-  const telling = live && live !== prog && !path && !live.includes("@") && live.toLowerCase() !== a.program?.key;
-  if (telling && !(tab?.named && tab.name !== prog)) return live;
-  if (tab?.named) return tab.name;
-  return prog || live || a.address;
 }
 
 function agentStatus(t, status, compact = false) {
@@ -98,15 +89,136 @@ export default class Spaces extends View {
     this.folded = new Set(JSON.parse(localStorage.getItem("machines.folded") ?? "[]"));
     // Spaces whose agents are folded away (open by default).
     this.closed = new Set(JSON.parse(localStorage.getItem("spaces.closed") ?? "[]"));
+    // Auto-name: agents being named now; the menu's last request already handled.
+    this.naming = new Set();
+    this.request = shared("agent-names.request")?.at ?? 0;
+    cx.spawn(async (cx) => {
+      for (;;) {
+        const c = await nextCommand();
+        if (c === "auto-name-all") { this.startAutoNameAll(cx); continue; }
+        if (c.startsWith("new-")) { this.startAgent(c.slice(4)); continue; }
+        const a = c === "auto-name" && agents().find((x) => x.focused);
+        if (a) this.startAutoName(a, cx);
+      }
+    });
+    // When each agent's status last changed (as Herdr's Agents list shows it), kept across starts.
+    try { this.changed = JSON.parse(localStorage.getItem("agents.changed") ?? "{}"); } catch { this.changed = {}; }
+    cx.timer.every(30000, (cx) => cx.notify());
     this.refreshMachines(cx);
     cx.timer.every(15000, cx => this.refreshMachines(cx));
     // Refresh only when the refs could have changed (see `due`).
     cx.timer.every(250, (cx) => this.checkNew(cx));
   }
 
+  // The names we gave tabs: tab id -> { tab, row, by } (see names.js), kept in localStorage.
+  namesGiven() {
+    if (this.given) return this.given;
+    const load = (k, d) => { try { return JSON.parse(localStorage.getItem(k) ?? "null") ?? d; } catch { return d; } };
+    const given = load("agent-names.given", {});
+    // Earlier versions kept the tab name alone, or only a list of ids.
+    for (const [id, v] of Object.entries(given)) if (typeof v === "string") given[id] = { tab: v, row: null, by: "sync" };
+    this.given = given;
+    return given;
+  }
+
+  saveNames() {
+    try { localStorage.setItem("agent-names.given", JSON.stringify(this.given)); } catch {}
+  }
+
+  // Keeps a one-agent tab named after its agent's title: the tab at most 3 words (a longer title
+  // is shortened by Haiku once, the title only, and remembered), its sidebar row at most 5.
+  // Names a person gives (Rename) or Auto-name gives are left alone; a reset always wins.
+  syncTabs(sp, cx) {
+    const tabs = sp.filter((s) => !s.machine).flatMap((s) => s.tabs ?? []);
+    const byId = new Map(tabs.map((t) => [t.id, t]));
+    const given = this.namesGiven();
+    let changed = false;
+    for (const id of Object.keys(given)) if (!byId.has(id)) { delete given[id]; changed = true; }
+    if (!this.short) {
+      try { localStorage.removeItem("agent-names.short"); localStorage.removeItem("agent-names.synced"); } catch {}
+      try { this.short = JSON.parse(localStorage.getItem("agent-names.short.v2") ?? "{}"); } catch { this.short = {}; }
+    }
+    this.shortening ??= new Set();
+    for (const { tab, title } of syncTargets(agents().filter((a) => !a.address.includes("/")), tabs, given)) {
+      if (!title) { run("tab.rename", { id: tab, name: NEW }); continue; }
+      const name = title.split(/\s+/).length <= TAB_WORDS ? title : this.short[title];
+      if (!name) {
+        if (!this.shortening.has(title)) {
+          this.shortening.add(title);
+          cx.spawn(async (cx) => {
+            this.short[title] = await shortenTitle(title);
+            this.shortening.delete(title);
+            try { localStorage.setItem("agent-names.short.v2", JSON.stringify(this.short)); } catch {}
+            cx.notify();
+          });
+        }
+        continue;
+      }
+      const row = shortTitle(title, ROW_WORDS);
+      if (byId.get(tab)?.name !== name) run("tab.rename", { id: tab, name });
+      if (given[tab]?.tab !== name || given[tab]?.row !== row) { given[tab] = { tab: name, row, by: "sync" }; changed = true; }
+    }
+    if (changed) this.saveNames();
+  }
+
+  // Names one agent: null when done, else the reason it couldn't. The row spins meanwhile.
+  async nameOne(a, cx) {
+    this.naming.add(a.address);
+    cx.notify();
+    let failed = null;
+    try {
+      const pair = await autoName(a);
+      this.namesGiven()[a.tab] = { ...pair, by: "auto" };
+      this.saveNames();
+    } catch (e) { failed = String(e?.message ?? e); }
+    this.naming.delete(a.address);
+    cx.notify();
+    return failed;
+  }
+
+  // One run per agent; a failure says why in a toast.
+  startAutoName(a, cx) {
+    if (this.naming.has(a.address)) return;
+    const label = this.labels?.get(a.address) ?? a.program?.name ?? "this agent";
+    cx.spawn(async (cx) => {
+      const failed = await this.nameOne(a, cx);
+      if (failed) notify({ level: "error", title: `Couldn't name ${label}`, body: failed });
+    });
+  }
+
+  // Every agent Auto-name can name, three at a time; one toast for whatever failed.
+  startAutoNameAll(cx) {
+    const todo = agents().filter((a) => nameable(a) && !this.naming.has(a.address));
+    if (!todo.length) return;
+    const labels = new Map(todo.map((a) => [a.address, this.labels?.get(a.address) ?? a.program?.name ?? a.address]));
+    cx.spawn(async (cx) => {
+      const failures = [];
+      const queue = [...todo];
+      const worker = async () => {
+        for (let a = queue.shift(); a; a = queue.shift()) {
+          const failed = await this.nameOne(a, cx);
+          if (failed) failures.push(`${labels.get(a.address)}: ${failed}`);
+        }
+      };
+      await Promise.all([worker(), worker(), worker()]);
+      if (failures.length) {
+        notify({ level: "error", title: `Named ${todo.length - failures.length} of ${todo.length} agents`, body: failures.join("\n") });
+      }
+    });
+  }
+
   checkNew(cx) {
     const now = Date.now();
     const sp = spaces();
+    this.syncTabs(sp, cx);
+    // The agent menu's Auto-name (sidebar-menu) asks through shared state.
+    const req = shared("agent-names.request");
+    if (req?.at > this.request) {
+      this.request = req.at;
+      const a = !req.all && agents().find((x) => x.address === req.terminal);
+      if (req.all) this.startAutoNameAll(cx);
+      else if (a) this.startAutoName(a, cx);
+    }
     for (const s of sp) if (!this.shown.has(s.id)) this.born[s.id] ??= now;
     const due = this.due(now, sp, panes());
     if (due.size) this.refreshGit(due, cx);
@@ -289,12 +401,16 @@ export default class Spaces extends View {
     return by;
   }
 
+  // An agent: the number ⌘ goes to its tab with (its tab's place in its space), its icon and name,
+  // how long it has been in its status, and the status.
   agentRow(a, tree, t) {
     const pic = agentIcon(a.program, 14, t.foreground);
     const idle = a.status === "idle" && !a.focused;
+    const index = this.tabsById?.get(a.tab)?.index;
+    const since = this.changed?.[a.address]?.at;
     return h_flex()
       .id(`space-agent-${a.address}`)
-      .pl(tree ? 57 : 35)
+      .pl(tree ? 41 : 19)
       .pr(8)
       .h(26)
       .flex_none()
@@ -306,10 +422,16 @@ export default class Spaces extends View {
       .when(!a.focused, (el) => el.hover((s) => s.bg(t.hover)))
       .cursor_pointer()
       .on_click(() => run("pane.focus", { pane: a.pane }))
+      .on_mouse_down("right", () => openOverlay({ mod: "sidebar-menu", kind: "popup", width: 230, height: 164,
+        props: { kind: "agent", target: { terminal: a.address, tab: a.tab, pane: a.pane } } }))
+      .child(div().w(10).flex_none().text_size(11.5).text_right().text_color(t.muted).child(index && index <= 9 ? String(index) : ""))
       .when(Boolean(pic), (el) => el.child(pic))
       .child(div().flex_1().min_w(0).truncate().text_color(idle ? t.muted : t.foreground).child(this.labels.get(a.address)))
       .when(a.address.includes("/"), (el) => el.child(div().flex_none().text_size(10).text_color(t.dim).child(a.address.split("/")[0])))
-      .child(agentStatus(t, a.status));
+      .when(Boolean(since), (el) => el.child(div().flex_none().text_size(11).text_color(t.dim).child(duration(Date.now() - since))))
+      .child(this.naming?.has(a.address)
+        ? svg("mods/workspace-chrome/spinner.svg").size(12).mx(1).flex_none().text_color(t.accent).spin(900)
+        : agentStatus(t, a.status));
   }
 
   // A space's fold: its chevron; folded, how many agents, and the most urgent one's state.
@@ -343,9 +465,32 @@ export default class Spaces extends View {
       .child(svg(`mods/workspace-chrome/chevron-${open ? "down" : "right"}.svg`).size(11).flex_none());
   }
 
+  // black-sun's space menu (sidebar-menu): start an agent here, then Herdr's own space items.
   menu(w) {
     // A popup is as tall as its items; height is only the most.
-    openOverlay({ mod: "menu", kind: "popup", width: 200, height: 260, props: { tab: "space", target: { id: w.id } } });
+    const g = this.git[where(w, panes())];
+    openOverlay({ mod: "sidebar-menu", kind: "popup", width: 240, height: 440,
+      props: { kind: "space", target: { id: w.id, git: g ? (g.linked ? "linked" : "main") : null } } });
+  }
+
+  // A new tab running an agent (keys.json "spaces-tree.new-<program key>", e.g. new-claude) in the
+  // space you're in, as Herdr's + menu starts one.
+  async startAgent(key) {
+    const space = spaces().find((s) => s.active);
+    const where = space?.machine ?? "";
+    let known = shared("new-menu.agents")?.[where] ?? [];
+    if (!known.some((a) => a.key === key)) {
+      try {
+        known = await knownAgents({ on: space?.machine ?? null });
+        setShared("new-menu.agents", { ...shared("new-menu.agents"), [where]: known });
+      } catch {}
+    }
+    const a = known.find((x) => x.key === key);
+    if (!a?.installed) {
+      notify({ level: "error", title: `Couldn't start ${a?.name ?? key}`, body: a ? "It isn't installed on this machine." : "Herdr doesn't know this agent." });
+      return;
+    }
+    run("tab.new", { name: NEW, space: space?.id, argv: a.run });
   }
 
   orderingDue(now) {
@@ -579,7 +724,12 @@ export default class Spaces extends View {
     if (changed) setShared("space.colors", kept);
     this.byspace = this.agentsBySpace();
     const tabs = new Map(sp.flatMap((s) => s.tabs ?? []).map((tab) => [tab.id, tab]));
-    this.labels = new Map([...this.byspace.values()].flat().map((a) => [a.address, agentLabel(a, tabs.get(a.tab))]));
+    this.tabsById = tabs;
+    const seen = track(this.changed ?? {}, [...this.byspace.values()].flat(), Date.now(), (a) => tabs.get(a.tab)?.changed_at ?? null);
+    this.changed = seen.changed;
+    if (seen.dirty) { try { localStorage.setItem("agents.changed", JSON.stringify(this.changed)); } catch {} }
+    const given = this.namesGiven();
+    this.labels = new Map([...this.byspace.values()].flat().map((a) => [a.address, rowLabel(a, tabs.get(a.tab), given[a.tab])]));
     const withAgents = sp.filter((s) => this.byspace.has(s.id)).map((s) => s.id);
     const anyOpen = withAgents.some((id) => !this.closed.has(id));
     return v_flex().size_full().min_h(0).bg(t.chrome).text_size(13)
