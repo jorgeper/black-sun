@@ -1,0 +1,15 @@
+# Herdr writes these into every mod folder
+jsconfig.json
+*.d.ts
+# secrets and keys never leave this machine
+.env*
+!.env.example
+*.pem
+*.key
+id_*
+*.p12
+*.pfx
+credentials*
+secrets*
+# OS
+.DS_Store
