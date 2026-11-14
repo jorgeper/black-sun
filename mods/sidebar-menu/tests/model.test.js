@@ -17,6 +17,7 @@ test("spaceItems: installed agents first (hotkey, else their number), then Termi
   const [, claude, codex, term, rename, , , close] = items;
   assert.deepEqual([claude.cmd, claude.args, claude.key], ["tab.new", { name: "<new>", space: "s1", argv: ["claude"] }, "cmd-shift-c"]);
   assert.equal(codex.key, "2");
+  assert.deepEqual([claude.agent, codex.agent], ["claude", "codex"]);
   assert.deepEqual([term.cmd, term.args, term.key], ["tab.new", { space: "s1" }, "cmd-t"]);
   assert.equal(rename.gap, true);
   assert.deepEqual([rename.cmd, rename.args, rename.key], ["space.rename", { id: "s1" }, "shift-f2"]);

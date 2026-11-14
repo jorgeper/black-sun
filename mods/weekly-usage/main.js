@@ -5,7 +5,7 @@
 
 import { View, div } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";
-import { exec, theme, layout } from "herdr";
+import { exec, theme, layout, shared } from "herdr";
 
 function find(node, id) {
   if (node?.id === id) return node;
@@ -17,7 +17,8 @@ function find(node, id) {
 }
 const narrow = () => (find(layout(), "sidebar")?.size?.px ?? Infinity) < 160;
 
-const CLAUDE_EVERY = 5 * 60000;
+// Claude and Fable refresh every black-sun setting "usageMinutes" (1, 5, 15 or 30; default 5).
+const claudeEvery = () => ([1, 5, 15, 30].includes(shared("black-sun.settings")?.usageMinutes) ? shared("black-sun.settings").usageMinutes : 5) * 60000;
 const CODEX_EVERY = 60000;
 
 const CLAUDE_SH = `
@@ -49,13 +50,14 @@ export default class UsageBars extends View {
     this.bars = { claude: null, fable: null, codex: null };
     this.refreshClaude(cx);
     this.refreshCodex(cx);
-    cx.timer.every(CLAUDE_EVERY, (cx) => this.refreshClaude(cx));
+    cx.timer.every(30000, (cx) => { if (Date.now() - (this.claudeAt ?? 0) >= claudeEvery()) this.refreshClaude(cx); });
     cx.timer.every(CODEX_EVERY, (cx) => this.refreshCodex(cx));
   }
 
   refreshClaude(cx) {
     if (this.claudeBusy) return;
     this.claudeBusy = true;
+    this.claudeAt = Date.now();
     cx.spawn(async (cx) => {
       try {
         const r = await exec("sh", ["-c", CLAUDE_SH], { timeout: 30000 });

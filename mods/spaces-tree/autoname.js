@@ -7,10 +7,9 @@
 // was said (no tool output) to Anthropic. Writes nothing but the tab's name.
 import { exec, readTextFile, home, agents, panes, run } from "herdr";
 import { readdir } from "fs/promises";
-import { claudeExcerpt, codexExcerpt, cleanTitle, shortTitle, namePair } from "./names.js";
+import { claudeExcerpt, codexExcerpt, cleanTitle, shortTitle, namePair, namePrompt, shortenPrompt, TAB_WORDS } from "./names.js";
 
-const PROMPT = 'Below is the end of a coding session (on stdin). Name what it is working on now, judging by the most recent messages. Reply with exactly two lines and nothing else:\nRow: <AT MOST 5 words>\nTab: <AT MOST 3 words>\nKeep the subject, drop filler words like "and", "the", "to". Example:\nRow: Herdr agent rename menu\nTab: Agent rename menu';
-const SHORTEN = 'Rewrite the title on stdin as a tab name of AT MOST 3 words: keep the subject, drop filler words like "and", "the", "to". Examples: "Copying backup files to disk" -> Backup disk copy; "Fix flaky login tests in CI" -> Flaky login tests. Reply with only the tab name.';
+// The prompts (with black-sun's word limits) are names.js's namePrompt and shortenPrompt.
 
 // Claude Haiku through the person's own Claude Code login: `input` on stdin, nothing saved.
 async function haiku(input, prompt) {
@@ -22,9 +21,9 @@ async function haiku(input, prompt) {
 
 // A tab-sized version of an agent's own title (only the title is sent); trimmed to 3 words
 // when Haiku can't help.
-export async function shortenTitle(title) {
-  try { return cleanTitle(await haiku(title, SHORTEN)) ?? shortTitle(title); }
-  catch { return shortTitle(title); }
+export async function shortenTitle(title, tabWords = TAB_WORDS) {
+  try { return cleanTitle(await haiku(title, shortenPrompt(tabWords)), tabWords) ?? shortTitle(title, tabWords); }
+  catch { return shortTitle(title, tabWords); }
 }
 
 const projectDirName = (cwd) => cwd.replace(/[/.]/g, "-");
@@ -71,9 +70,9 @@ async function codexLog(cwd) {
 const cwdOf = (a) => panes().find((p) => p.terminal === a.address)?.cwd ?? null;
 
 // Names `a` after what its session is doing now: resolves { row, tab } (a sidebar name of at
-// most 5 words, a tab name of at most 3) after renaming its tab; throws an Error whose message
+// most words.rowWords words, a tab name of at most words.tabWords) after renaming its tab; throws an Error whose message
 // a person can read.
-export async function autoName(a) {
+export async function autoName(a, words = {}) {
   if (a.address.includes("/")) throw new Error("Auto-name works for agents on this computer only.");
   const kind = a.program?.key;
   let text;
@@ -98,8 +97,8 @@ export async function autoName(a) {
   if (text == null) throw new Error("Couldn't read this agent's session log.");
   const excerpt = read(text);
   if (!excerpt) throw new Error("Nothing said in this session yet to name it from.");
-  const said = await haiku(excerpt, PROMPT);
-  const pair = namePair(said);
+  const said = await haiku(excerpt, namePrompt(words));
+  const pair = namePair(said, words);
   if (!pair) throw new Error(`Haiku's answer wasn't a title: ${said.trim().slice(0, 80)}`);
   run("tab.rename", { id: a.tab, name: pair.tab });
   return pair;

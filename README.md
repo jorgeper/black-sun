@@ -32,7 +32,16 @@ A [Herdr](https://herdr.dev) layout for running many Claude Code and Codex agent
 | ⌘⇧A | Auto-name every agent |
 | ⌘1–9 | Go to that tab (the number on each agent row) |
 
-The ⌘⇧ keys need four lines in your `keys.json` (see below).
+The ⌘⇧ keys need four lines in your `keys.json`: Settings adds them for you, or see below.
+
+**Settings** (the gear in the Spaces header):
+
+- Show or hide the Agents list, Skills, MCP and Weekly usage.
+- **Yolo mode**: start every new Claude Code and Codex agent without permission prompts (Codex also without its sandbox).
+- Agent names: name agents after their titles or not, how many words go on a sidebar row (3–8) and on a tab (2–4), and whether Haiku shortens long tab names or words are simply cut.
+- How often Claude and Fable usage refreshes (1, 5, 15 or 30 minutes).
+- Which black-sun hotkeys are set, with a button that adds the missing ones to `keys.json`.
+- A link to Herdr's own Settings → Look for the theme and fonts.
 
 The rest is Herdr's own: tab bar, panes as cards, Files and Changes panels, status bar.
 
@@ -55,14 +64,15 @@ It reads every file first, adds the layout and its mods next to yours (yours sta
 | `spaces-tree` | Herdr's spaces list with each space's agents folded under it. Each agent row shows the ⌘-number of its tab, how long it has been in its status (as the Agents list does), and its status. Each agent gets two names from the same title: up to 5 words on its sidebar row, 2–3 on its tab (the Agents list shows the tab's). A just-started agent shows `<new>` in both until it says what it's doing. Right-click an agent for **Rename** (F2), **Auto-name** (⌘⇧R), which names both after what its session is doing now, or **Auto-name all** (⌘⇧A) for every agent at once. A name you type shows in both. |
 | `agents-list` | Herdr's Agents list with a chevron in its header that folds it down to the header, giving Spaces the room, and opens it again. |
 | `sidebar-menu` | The sidebar's right-click menus, drawn like Herdr's own. An agent's: Rename, Auto-name, Auto-name all, Close. A space's: **start Claude Code (⌘⇧C), Codex (⌘⇧X)** or any other installed agent, or a terminal, in that space; then Rename, worktrees and Close. ⌘⇧C and ⌘⇧X work from anywhere and start the agent in the space you're in. |
+| `black-sun-settings` | The settings dialog behind the Spaces header's gear. |
 | `weekly-usage` | Three bars: weekly limits used for Claude, Fable and Codex, with time to reset. |
 
 ## What it reads and runs
 
 - `weekly-usage` reads your Claude Code login from the macOS keychain to call Anthropic's usage endpoint (the token never leaves the shell command), and reads your newest Codex session log.
 - `skill-tree` reads Claude Code's session files and skill folders under `~/.claude`, and runs `ps` to match each session to its Herdr terminal. It never writes anything and never runs the update or remove commands it shows; Reveal just runs `open -R`.
-- `spaces-tree`'s **Auto-name** reads the end of that agent's session log (Claude Code's under `~/.claude/projects`, or the newest Codex log for that folder under `~/.codex/sessions`), takes up to 4,000 characters of what was said (no tool output), and asks Claude Haiku for a title with `claude -p`, using your own Claude Code login, for Codex agents too. It runs only when you ask, and changes nothing but the tab's name. To keep tab names short, a title over 3 words is also shortened by Haiku when it first appears; only the title is sent (no conversation).
-- `agents-list` and `sidebar-menu` read nothing outside Herdr.
+- `spaces-tree`'s **Auto-name** reads the end of that agent's session log (Claude Code's under `~/.claude/projects`, or the newest Codex log for that folder under `~/.codex/sessions`), takes up to 4,000 characters of what was said (no tool output), and asks Claude Haiku for a title with `claude -p`, using your own Claude Code login, for Codex agents too. It runs only when you ask, and changes nothing but the tab's name. To keep tab names short, a title longer than a tab allows (3 words by default) is also shortened by Haiku when it first appears; only the title is sent (no conversation). Settings can turn that off, or turn off naming after titles altogether.
+- `agents-list` and `sidebar-menu` read nothing outside Herdr. `black-sun-settings` keeps its settings in Herdr's shared state, and writes `keys.json` only when you click **Add missing keys** (it adds black-sun's section and changes nothing else). Its yolo switch writes Herdr's `programs.json` when you flip it: it adds `--dangerously-skip-permissions` to how Claude Code starts and `--dangerously-bypass-approvals-and-sandbox` to Codex's (and takes them out again), so it applies to every menu and layout in Herdr, and leaves the rest of the file as it is.
 - `mcp-tree` reads the same session files plus MCP configs: `~/.claude.json` (through a small Python filter that passes on only server names, URLs without credentials or query, program names, and header and environment variable *names*, never their values), the project's `.mcp.json`, and enabled plugins' `.mcp.json`. It never shows a secret, never writes anything and never runs the commands it shows.
 
 For the hotkeys (⌘⇧R, ⌘⇧A, ⌘⇧C, ⌘⇧X), add this to `~/.config/herdr-app/keys.json` (installing the layout doesn't touch your keys):
@@ -80,7 +90,7 @@ macOS, Claude Code. Details for agents (and for rebuilding it) are in [RECIPE.md
 
 ## Updating
 
-Replace `layouts/black-sun.json` and the six folders under `mods/` with the latest from this repo.
+Replace `layouts/black-sun.json` and the seven folders under `mods/` with the latest from this repo.
 
 ## License
 

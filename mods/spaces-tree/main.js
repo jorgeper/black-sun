@@ -7,7 +7,7 @@
 import { View, div, svg, image } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";
 import { spaces, machines, panes, agents, run, openOverlay, exec, hc, theme, shared, setShared, watchFolder, window, layout, nextCommand, notify, knownAgents } from "herdr";
-import { syncTargets, shortTitle, rowLabel, nameable, NEW, TAB_WORDS, ROW_WORDS } from "./names.js";
+import { syncTargets, shortTitle, rowLabel, nameable, nameOptions, NEW } from "./names.js";
 import { autoName, shortenTitle } from "./autoname.js";
 import { duration, track } from "./times.js";
 
@@ -92,6 +92,8 @@ export default class Spaces extends View {
     // Auto-name: agents being named now; the menu's last request already handled.
     this.naming = new Set();
     this.request = shared("agent-names.request")?.at ?? 0;
+    // The space menu's "start this agent here" (sidebar-menu), last one handled.
+    this.started = shared("black-sun.start")?.at ?? 0;
     cx.spawn(async (cx) => {
       for (;;) {
         const c = await nextCommand();
@@ -129,32 +131,48 @@ export default class Spaces extends View {
   // is shortened by Haiku once, the title only, and remembered), its sidebar row at most 5.
   // Names a person gives (Rename) or Auto-name gives are left alone; a reset always wins.
   syncTabs(sp, cx) {
+    // black-sun settings: sync can be off; word limits; Haiku or plain cutting for long titles.
+    const opts = nameOptions(shared("black-sun.settings"));
     const tabs = sp.filter((s) => !s.machine).flatMap((s) => s.tabs ?? []);
+    if (!opts.sync) {
+      // Off: nothing waits for a title, so "<new>" tabs go back to Herdr's automatic name.
+      for (const tab of tabs) if (tab.named && tab.name === NEW) run("tab.rename", { id: tab.id, name: "" });
+      return;
+    }
     const byId = new Map(tabs.map((t) => [t.id, t]));
     const given = this.namesGiven();
     let changed = false;
     for (const id of Object.keys(given)) if (!byId.has(id)) { delete given[id]; changed = true; }
     if (!this.short) {
-      try { localStorage.removeItem("agent-names.short"); localStorage.removeItem("agent-names.synced"); } catch {}
-      try { this.short = JSON.parse(localStorage.getItem("agent-names.short.v2") ?? "{}"); } catch { this.short = {}; }
+      try { this.short = JSON.parse(localStorage.getItem("agent-names.short.v3") ?? "null"); } catch { this.short = null; }
+      // v2 kept shortenings by title alone, all for 3-word tabs: keep them as "3|<title>".
+      if (!this.short) {
+        let v2 = {};
+        try { v2 = JSON.parse(localStorage.getItem("agent-names.short.v2") ?? "{}"); } catch {}
+        this.short = Object.fromEntries(Object.entries(v2).map(([k, v]) => [`3|${k}`, v]));
+        try { localStorage.setItem("agent-names.short.v3", JSON.stringify(this.short)); } catch {}
+      }
+      try { for (const k of ["agent-names.short", "agent-names.short.v2", "agent-names.synced"]) localStorage.removeItem(k); } catch {}
     }
     this.shortening ??= new Set();
     for (const { tab, title } of syncTargets(agents().filter((a) => !a.address.includes("/")), tabs, given)) {
       if (!title) { run("tab.rename", { id: tab, name: NEW }); continue; }
-      const name = title.split(/\s+/).length <= TAB_WORDS ? title : this.short[title];
+      const fits = title.split(/\s+/).length <= opts.tabWords;
+      const cached = `${opts.tabWords}|${title}`;
+      const name = fits ? title : opts.haiku ? this.short[cached] : shortTitle(title, opts.tabWords);
       if (!name) {
-        if (!this.shortening.has(title)) {
-          this.shortening.add(title);
+        if (!this.shortening.has(cached)) {
+          this.shortening.add(cached);
           cx.spawn(async (cx) => {
-            this.short[title] = await shortenTitle(title);
-            this.shortening.delete(title);
-            try { localStorage.setItem("agent-names.short.v2", JSON.stringify(this.short)); } catch {}
+            this.short[cached] = await shortenTitle(title, opts.tabWords);
+            this.shortening.delete(cached);
+            try { localStorage.setItem("agent-names.short.v3", JSON.stringify(this.short)); } catch {}
             cx.notify();
           });
         }
         continue;
       }
-      const row = shortTitle(title, ROW_WORDS);
+      const row = shortTitle(title, opts.rowWords);
       if (byId.get(tab)?.name !== name) run("tab.rename", { id: tab, name });
       if (given[tab]?.tab !== name || given[tab]?.row !== row) { given[tab] = { tab: name, row, by: "sync" }; changed = true; }
     }
@@ -167,7 +185,7 @@ export default class Spaces extends View {
     cx.notify();
     let failed = null;
     try {
-      const pair = await autoName(a);
+      const pair = await autoName(a, nameOptions(shared("black-sun.settings")));
       this.namesGiven()[a.tab] = { ...pair, by: "auto" };
       this.saveNames();
     } catch (e) { failed = String(e?.message ?? e); }
@@ -218,6 +236,11 @@ export default class Spaces extends View {
       const a = !req.all && agents().find((x) => x.address === req.terminal);
       if (req.all) this.startAutoNameAll(cx);
       else if (a) this.startAutoName(a, cx);
+    }
+    const start = shared("black-sun.start");
+    if (start?.at > this.started) {
+      this.started = start.at;
+      this.startAgent(start.key, start.space);
     }
     for (const s of sp) if (!this.shown.has(s.id)) this.born[s.id] ??= now;
     const due = this.due(now, sp, panes());
@@ -473,18 +496,18 @@ export default class Spaces extends View {
       props: { kind: "space", target: { id: w.id, git: g ? (g.linked ? "linked" : "main") : null } } });
   }
 
-  // A new tab running an agent (keys.json "spaces-tree.new-<program key>", e.g. new-claude) in the
-  // space you're in, as Herdr's + menu starts one.
-  async startAgent(key) {
-    const space = spaces().find((s) => s.active);
+  // A new tab running an agent (keys.json "spaces-tree.new-<program key>", e.g. new-claude, or the
+  // space menu) in that space, else the one you're in, as Herdr's + menu starts one.
+  async startAgent(key, spaceId = null) {
+    const space = spaces().find((s) => (spaceId ? s.id === spaceId : s.active));
     const where = space?.machine ?? "";
+    // Ask Herdr each time: the start command may have changed (yolo mode is set in programs.json).
+    // The menus' cached list is the fallback when the check fails.
     let known = shared("new-menu.agents")?.[where] ?? [];
-    if (!known.some((a) => a.key === key)) {
-      try {
-        known = await knownAgents({ on: space?.machine ?? null });
-        setShared("new-menu.agents", { ...shared("new-menu.agents"), [where]: known });
-      } catch {}
-    }
+    try {
+      known = await knownAgents({ on: space?.machine ?? null });
+      setShared("new-menu.agents", { ...shared("new-menu.agents"), [where]: known });
+    } catch {}
     const a = known.find((x) => x.key === key);
     if (!a?.installed) {
       notify({ level: "error", title: `Couldn't start ${a?.name ?? key}`, body: a ? "It isn't installed on this machine." : "Herdr doesn't know this agent." });
@@ -729,7 +752,8 @@ export default class Spaces extends View {
     this.changed = seen.changed;
     if (seen.dirty) { try { localStorage.setItem("agents.changed", JSON.stringify(this.changed)); } catch {} }
     const given = this.namesGiven();
-    this.labels = new Map([...this.byspace.values()].flat().map((a) => [a.address, rowLabel(a, tabs.get(a.tab), given[a.tab])]));
+    const { rowWords } = nameOptions(shared("black-sun.settings"));
+    this.labels = new Map([...this.byspace.values()].flat().map((a) => [a.address, rowLabel(a, tabs.get(a.tab), given[a.tab], rowWords)]));
     const withAgents = sp.filter((s) => this.byspace.has(s.id)).map((s) => s.id);
     const anyOpen = withAgents.some((id) => !this.closed.has(id));
     return v_flex().size_full().min_h(0).bg(t.chrome).text_size(13)
@@ -746,6 +770,12 @@ export default class Spaces extends View {
             cx.notify();
           })
           .child(svg(`mods/workspace-chrome/chevron-${anyOpen ? "down" : "right"}.svg`).size(13))))
+        // black-sun's settings dialog (black-sun-settings).
+        .when(!collapsed, el => el.child(div().id("bs-settings").size(26).flex_none().flex().items_center().justify_center().rounded(6)
+          .hover(s => s.bg(t.hover).text_color(t.foreground))
+          .tooltip("black-sun settings")
+          .on_click(() => openOverlay({ mod: "black-sun-settings", kind: "dialog", width: 480, height: 640 }))
+          .child(svg("mods/workspace-chrome/settings.svg").size(13))))
         .child(div().id("space-new").size(26).flex_none().flex().items_center().justify_center().rounded(6).hover(s => s.bg(t.hover).text_color(t.foreground))
           .on_click(() => run("space.new")).child(svg("mods/workspace-chrome/plus.svg").size(14))))
       .child(v_flex().flex_1().min_h(0).px(collapsed ? 0 : 8).pb(14).overflow_y_scrollbar().mode("always")

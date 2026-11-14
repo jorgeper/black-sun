@@ -6,13 +6,13 @@ const NEW = "<new>";
 // A space's menu: start an agent (as Herdr's + menu does, in this space), a terminal, then
 // Herdr's own space items (rename, worktrees by the space's checkout, close).
 // known: knownAgents(); git: "main" | "linked" | null; keyOf(action) -> the bound key or "".
-// Items: { header } or { label, icon? | program?, cmd, args, key, gap? } or { label, icon, worktree, key }.
+// Items: { header } or { label, icon? | program? + agent (its key), cmd, args, key, gap? } or { label, icon, worktree, key }.
 export function spaceItems(known, git, space, keyOf) {
   const installed = (known ?? []).filter((a) => a.installed);
   return [
     { header: "Start an agent" },
     ...installed.map((a, i) => ({
-      label: a.name, program: { icon: a.icon, tint: a.tint }, cmd: "tab.new",
+      label: a.name, agent: a.key, program: { icon: a.icon, tint: a.tint }, cmd: "tab.new",
       args: { name: NEW, space, argv: a.run },
       key: keyOf(`spaces-tree.new-${a.key}`) || (i < 9 ? String(i + 1) : ""),
     })),

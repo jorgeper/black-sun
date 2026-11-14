@@ -166,3 +166,23 @@ test("a just-started agent is <new> until it says what it's doing", () => {
   assert.deepEqual(syncTargets(agents, tabs, {}), [{ tab: "b", title: "Fix login bug" }, { tab: "c", title: null }]);
   assert.equal(rowLabel(agents[0], tabs[0], null), "<new>");
 });
+
+test("nameOptions reads black-sun's settings: sync, word limits and Haiku, with defaults", async () => {
+  const { nameOptions } = await import("../names.js");
+  assert.deepEqual(nameOptions(undefined), { sync: true, rowWords: 5, tabWords: 3, haiku: true });
+  assert.deepEqual(nameOptions({ sync: false, rowWords: 7, tabWords: 2, haiku: false, usageMinutes: 1 }), { sync: false, rowWords: 7, tabWords: 2, haiku: false });
+  assert.deepEqual(nameOptions({ rowWords: 99, tabWords: 4 }), { sync: true, rowWords: 8, tabWords: 4, haiku: true });
+  assert.deepEqual(nameOptions({ rowWords: 3, tabWords: 4 }), { sync: true, rowWords: 3, tabWords: 3, haiku: true });
+});
+
+test("namePair and rowLabel take the word limits", () => {
+  assert.deepEqual(namePair("Row: Agent rename menu with hotkeys\nTab: Agent rename menu", { rowWords: 3, tabWords: 2 }), { row: "Agent rename menu", tab: "Agent rename" });
+  const a = ag({ tab: "a", title: "Copying backup files to a spare disk now" });
+  assert.equal(rowLabel(a, { id: "a", name: "1", named: false }, null, 7), "Copying backup files spare disk now");
+});
+
+test("the Haiku prompts say the word limits", async () => {
+  const { namePrompt, shortenPrompt } = await import("../names.js");
+  assert.match(namePrompt({ rowWords: 6, tabWords: 2 }), /Row: <AT MOST 6 words>\nTab: <AT MOST 2 words>/);
+  assert.match(shortenPrompt(4), /AT MOST 4 words/);
+});

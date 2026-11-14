@@ -81,7 +81,11 @@ export default class SidebarMenu extends View {
     if (p.kind !== "space") return agentItems(p.target);
     return spaceItems(this.known, p.target?.git ?? null, p.target?.id, shortcut).map((it) => it.header ? it : {
       ...it, on: true,
-      go: it.worktree
+      go: it.agent
+        // spaces-tree starts it (shared "black-sun.start"), asking Herdr for the agent's current
+        // start command (yolo mode can change it).
+        ? () => setShared("black-sun.start", { key: it.agent, space: p.target?.id, at: Date.now() })
+        : it.worktree
         ? () => openOverlay({ mod: "worktree", kind: "dialog", ...(it.worktree.action === "open" ? { width: 560, height: 480 } : { width: 440, height: 260 }), props: it.worktree })
         : () => run(it.cmd, it.args),
     });

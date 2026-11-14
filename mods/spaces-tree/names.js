@@ -56,6 +56,30 @@ export function syncTargets(agents, tabs, given) {
 
 export const TAB_WORDS = 3;
 export const ROW_WORDS = 5;
+
+// black-sun's settings (shared "black-sun.settings", set in the black-sun-settings dialog) that
+// naming uses: sync on or off, the row's and tab's word limits, shortening by Haiku. Defaults
+// when unset; limits clamped (row 3–8, tab 2–4, never more than the row).
+export function nameOptions(raw) {
+  const r = raw && typeof raw === "object" ? raw : {};
+  const bool = (v, d) => (typeof v === "boolean" ? v : d);
+  const num = (v, d, lo, hi) => (Number.isFinite(v) ? Math.min(hi, Math.max(lo, Math.round(v))) : d);
+  const rowWords = num(r.rowWords, ROW_WORDS, 3, 8);
+  return {
+    sync: bool(r.sync, true),
+    rowWords,
+    tabWords: Math.min(rowWords, num(r.tabWords, TAB_WORDS, 2, 4)),
+    haiku: bool(r.haiku, true),
+  };
+}
+
+// Auto-name's question to Haiku, and sync's request to shorten a title, with the word limits.
+export function namePrompt({ rowWords = ROW_WORDS, tabWords = TAB_WORDS } = {}) {
+  return `Below is the end of a coding session (on stdin). Name what it is working on now, judging by the most recent messages. Reply with exactly two lines and nothing else:\nRow: <AT MOST ${rowWords} words>\nTab: <AT MOST ${tabWords} words>\nKeep the subject, drop filler words like "and", "the", "to". Example:\nRow: Herdr agent rename menu\nTab: Agent rename menu`;
+}
+export function shortenPrompt(tabWords = TAB_WORDS) {
+  return `Rewrite the title on stdin as a tab name of AT MOST ${tabWords} words: keep the subject, drop filler words like "and", "the", "to". Examples: "Copying backup files to disk" -> Backup disk copy; "Fix flaky login tests in CI" -> Flaky login tests. Reply with only the tab name.`;
+}
 const SMALL = new Set(["a", "an", "the", "to", "for", "of", "in", "on", "and", "or", "with", "from", "by", "at", "into", "via"]);
 
 // At most `max` words. A longer title loses its little words first ("and", "the", ...), then
@@ -142,21 +166,21 @@ export function cleanTitle(raw, max = TAB_WORDS) {
 }
 
 // Auto-name's answer, "Row: …" then "Tab: …", as { row, tab }; a single line serves both.
-export function namePair(raw) {
+export function namePair(raw, { rowWords = ROW_WORDS, tabWords = TAB_WORDS } = {}) {
   const lines = String(raw ?? "").split("\n").map((l) => l.trim()).filter(Boolean);
-  const row = cleanTitle(lines[0], ROW_WORDS);
+  const row = cleanTitle(lines[0], rowWords);
   if (!row) return null;
-  return { row, tab: (lines[1] && cleanTitle(lines[1], TAB_WORDS)) || shortTitle(row, TAB_WORDS) };
+  return { row, tab: (lines[1] && cleanTitle(lines[1], tabWords)) || shortTitle(row, tabWords) };
 }
 
 // An agent row's name: the row name while its tab still carries the tab name we gave it; else
 // the agent's own title unless a person named the tab (not just with the program's name), then
-// that name; else the program. Titles at most ROW_WORDS words.
-export function rowLabel(a, tab, given) {
+// that name; else the program. Titles at most rowWords words.
+export function rowLabel(a, tab, given, rowWords = ROW_WORDS) {
   if (given && tab?.named && tab.name === given.tab && given.row) return given.row;
   const prog = a.program?.name;
   const live = telling(a);
-  if (live && !(tab?.named && tab.name !== prog)) return shortTitle(threadTitle(live) ?? live, ROW_WORDS);
+  if (live && !(tab?.named && tab.name !== prog)) return shortTitle(threadTitle(live) ?? live, rowWords);
   if (tab?.named) return tab.name;
   return prog || clean(a.title) || a.address;
 }
