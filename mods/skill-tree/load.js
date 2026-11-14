@@ -93,9 +93,12 @@ async function describe(path) {
   try { return parseFrontMatter((await readTextFile(file)) ?? "")?.description ?? ""; } catch { return ""; }
 }
 
-// Everything set up for any new session outside a project, plus the built-ins one agent reports.
+// Installed Claude and shared personal skills, plus the built-ins one agent reports.
 export async function loadGlobalTree(builtinFrom) {
   const facts = await loadFacts(null);
+  // Global is an inventory, not a claim that every agent has loaded these skills.
+  // Prefer Claude's copy on name collisions and follow shared-folder symlinks.
+  facts.userSkills = { ...await skillDirs(`${home()}/.agents/skills`), ...facts.userSkills };
   const names = [];
   const descriptions = {};
   const add = async (name, path) => { names.push(name); descriptions[name] = await describe(path); };
@@ -174,8 +177,12 @@ export async function loadInfo(skill, cwd) {
   if (skill.group === "builtin") ctx.claudeVersion = await claudeVersion();
   if (skill.group === "project") ctx.gitRoot = await gitRoot(cwd);
   if (skill.group === "yours") {
-    const link = `${claude()}/skills/${skill.display}`;
-    if (skill.path && skill.path !== link) ctx.linkedFrom = link;
+    const claudeLink = `${claude()}/skills/${skill.display}`;
+    const sharedLink = `${home()}/.agents/skills/${skill.display}`;
+    const inClaude = await exists(`${claudeLink}/SKILL.md`);
+    const link = inClaude ? claudeLink : await exists(`${sharedLink}/SKILL.md`) ? sharedLink : null;
+    ctx.sharedOnly = !inClaude && !!link;
+    if (link && skill.path && skill.path !== link) ctx.linkedFrom = link;
     const lock = (await json(`${home()}/.agents/.skill-lock.json`))?.skills?.[skill.display];
     if (lock && skill.path?.endsWith(`/.agents/skills/${skill.display}`)) ctx.lock = lock;
     else ctx.gitRoot = await gitRoot(skill.path);

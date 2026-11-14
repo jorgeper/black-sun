@@ -266,7 +266,9 @@ export function skillInfo(skill, ctx) {
       }
       return {
         kind: project ? "Project" : "Personal",
-        scope: project ? `Only sessions started in ${ctx.cwd}` : "Every session, in every project",
+        scope: project ? `Only sessions started in ${ctx.cwd}`
+          : ctx.sharedOnly ? "Installed in the shared skills folder; available to agents that read it"
+          : "Every session, in every project",
         source: [...source, ...linked],
         path: skill.path,
         update,

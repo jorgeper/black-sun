@@ -140,7 +140,7 @@ export default class SkillTree extends View {
       .children(this.entries.map((e) => option(e.address, e.label, e.program,
         !e.available ? "Claude Code only" : e.focused ? "focused" : "", e.available)))
       .child(div().h(1).my(4).bg(t.border))
-      .child(option(GLOBAL, "Global", undefined, "any new session"));
+      .child(option(GLOBAL, "Global", undefined, "installed skills"));
     const trigger = h_flex().id("pick-trigger").w(320).h(28).px(10).gap(8).items_center().rounded(6)
       .cursor_pointer().border(1).border_color(this.pickOpen ? t.accent : t.border).bg(t.raised)
       .hover((s) => s.bg(t.hover))
