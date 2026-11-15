@@ -7,11 +7,14 @@
 // spaces-tree to name it from what its session is doing (shared "agent-names.request"), and
 // Auto-name all every agent it can. Open in Finder asks spaces-tree to show the folder the agent
 // is in (shared "black-sun.finder"; agents on this computer only). Close closes the agent (its tab, or its pane when it shares one).
+// A space's menu also tags it: one item per space tag (shared "black-sun.tags", see tags.js), and
+// "Edit tags…" opens black-sun's settings, where tags are made.
 // ↑/↓ move, Enter runs, Esc closes. Hints show the keys bound in keys.json.
 import { View, div, svg, image } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";
 import { run, props, closeOverlay, openOverlay, theme, keys, agents, panes, spaces, shared, setShared, knownAgents } from "herdr";
 import { spaceItems } from "./model.js";
+import { KEY as TAGS, normalize as tagState, assign } from "./tags.js";
 
 // The agents Herdr's + menu last found on each machine (that mod keeps them in shared state).
 const KNOWN = "new-menu.agents";
@@ -57,6 +60,7 @@ function closeItem(target) {
 // A menu item's icon: an svg path, or an agent's program icon (a glyph or a picture).
 function itemIcon(it, t) {
   const color = it.on === false ? t.dim : t.muted;
+  if (it.dot) return div().w(14).flex_none().flex().justify_center().child(div().size(10).rounded(3).bg(it.dot));
   if (it.program?.icon) return it.program.tint ? svg(it.program.icon).size(14).flex_none().text_color(t.foreground) : image(it.program.icon).w(14).h(14).flex_none();
   return it.icon ? svg(it.icon).size(14).flex_none().text_color(color) : div().w(14).flex_none();
 }
@@ -84,9 +88,14 @@ export default class SidebarMenu extends View {
   list() {
     const p = props() ?? {};
     if (p.kind !== "space") return agentItems(p.target);
-    return spaceItems(this.known, p.target?.git ?? null, p.target?.id, shortcut).map((it) => it.header ? it : {
+    const tags = tagState(shared(TAGS));
+    return spaceItems(this.known, p.target?.git ?? null, p.target?.id, shortcut, tags.tags, tags.spaces[p.target?.id] ?? null).map((it) => it.header ? it : {
       ...it, on: true,
-      go: it.agent
+      go: "tag" in it
+        ? () => setShared(TAGS, assign(tagState(shared(TAGS)), p.target?.id, it.tag))
+        : it.settings
+        ? () => openOverlay({ mod: "black-sun-settings", kind: "dialog", width: 480, height: 640 })
+        : it.agent
         // spaces-tree starts it (shared "black-sun.start"), asking Herdr for the agent's current
         // start command (yolo mode can change it).
         ? () => setShared("black-sun.start", { key: it.agent, space: p.target?.id, at: Date.now() })

@@ -7,6 +7,7 @@ A [Herdr](https://herdr.dev) layout for running many Claude Code and Codex agent
 **Sidebar**, top to bottom:
 
 - **Spaces with their agents.** Each space lists its agents under it. Each row shows the agent's tab number (what ⌘1–9 goes to), its icon and name, how long it has been in its current state, and that state (working, needs you, done, idle). Chevrons fold one space's agents, or all of them.
+- **Space tags.** Make your own tags, each a name and a color (say "ephemeral" and "permanent"), and give each space one from its right-click menu. A space shows its tag as a colored square before its name, or as the whole row in that color with text that stays readable on it; an untagged space shows a hollow square. New spaces can start with a tag you choose.
 - **A foldable Agents list.** Herdr's Agents list, sorted by priority or grouped by space. The chevron in its header folds it down to the header to give Spaces the room.
 - **Skills · N.** Click it to see the skills a Claude agent has loaded, grouped by where they come from (this project, yours, your claude.ai account, each plugin, built in), plus the project's `.agents/skills` in a group of its own (Codex reads that folder; Claude Code doesn't). An agent dropdown switches agents; picking a Codex or other agent shows the `.agents/skills` folders it can read (the project's and your personal one), and Global shows installed Claude skills plus shared personal skills from `~/.agents/skills` (under Yours), without duplicates. A skill's or plugin's **ⓘ** shows its kind, source, location on disk, description, and how to update or remove it.
 - **MCP · N.** The same for MCP servers: which connected and which failed (a red dot, all the way up the tree), the tools each one gave the agent, its instructions, its config with every secret value hidden, and how to fix a failed server.
@@ -22,7 +23,7 @@ A [Herdr](https://herdr.dev) layout for running many Claude Code and Codex agent
 **Right-click menus** (drawn like Herdr's own, with their hotkeys):
 
 - **On an agent:** Rename, Auto-name, Auto-name all, Open in Finder, and Close (closes the whole tab when the agent is alone in it, otherwise just its pane).
-- **On a space:** start Claude Code, Codex, any other installed agent, or a terminal in *that* space, then Rename, worktrees and Close.
+- **On a space:** start Claude Code, Codex, any other installed agent, or a terminal in *that* space, then Rename, worktrees, its tag (pick one, or pick the checked one to remove it) and Close.
 - ⌘⇧C and ⌘⇧X start Claude Code or Codex in the space you're in, from anywhere.
 
 | Hotkey | Does |
@@ -39,6 +40,7 @@ The ⌘⇧ keys need five lines in your `keys.json`: Settings adds them for you,
 **Settings** (the gear in the Spaces header):
 
 - Show or hide the Agents list, Skills, MCP and Weekly usage.
+- **Space tags**: add, name, color and remove tags; show a space's tag as a square or as the whole row; and pick the tag new spaces start with.
 - **Yolo mode**: start every new Claude Code and Codex agent without permission prompts (Codex also without its sandbox).
 - Agent names: name agents after their titles or not, how many words go on a sidebar row (3–8) and on a tab (2–4), and whether Haiku shortens long tab names or words are simply cut.
 - How often Claude and Fable usage refreshes (1, 5, 15 or 30 minutes).
@@ -66,7 +68,7 @@ It reads every file first, adds the layout and its mods next to yours (yours sta
 | `spaces-tree` | Herdr's spaces list with each space's agents folded under it. Each agent row shows the ⌘-number of its tab, how long it has been in its status (as the Agents list does), and its status. Each agent gets two names from the same title: up to 5 words on its sidebar row, 2–3 on its tab (the Agents list shows the tab's). A just-started agent shows `<new>` in both until it says what it's doing. Right-click an agent for **Rename** (F2), **Auto-name** (⌘⇧R), which names both after what its session is doing now, or **Auto-name all** (⌘⇧A) for every agent at once. A name you type shows in both. **Open in Finder** (⌘⇧F) shows the folder the agent is in. |
 | `agents-list` | Herdr's Agents list with a chevron in its header that folds it down to the header, giving Spaces the room, and opens it again. |
 | `sidebar-menu` | The sidebar's right-click menus, drawn like Herdr's own. An agent's: Rename, Auto-name, Auto-name all, Open in Finder, Close. A space's: **start Claude Code (⌘⇧C), Codex (⌘⇧X)** or any other installed agent, or a terminal, in that space; then Rename, worktrees and Close. ⌘⇧C and ⌘⇧X work from anywhere and start the agent in the space you're in. |
-| `black-sun-settings` | The settings dialog behind the Spaces header's gear. |
+| `black-sun-settings` | The settings dialog behind the Spaces header's gear. Space tags are made here. |
 | `weekly-usage` | Three bars: weekly limits used for Claude, Fable and Codex, with time to reset. |
 
 ## What it reads and runs
@@ -75,7 +77,7 @@ It reads every file first, adds the layout and its mods next to yours (yours sta
 - `skill-tree` reads Claude Code's session files and skill folders under `~/.claude`, shared skills under `~/.agents/skills` and each agent's `<folder>/.agents/skills`, and runs `ps` to match each session to its Herdr terminal. It never writes anything and never runs the update or remove commands it shows; Reveal just runs `open -R`.
 - `spaces-tree`'s **Auto-name** reads the end of that agent's session log (Claude Code's under `~/.claude/projects`, or the newest Codex log for that folder under `~/.codex/sessions`), takes up to 4,000 characters of what was said (no tool output), and asks Claude Haiku for a title with `claude -p`, using your own Claude Code login, for Codex agents too. It runs only when you ask, and changes nothing but the tab's name. To keep tab names short, a title longer than a tab allows (3 words by default) is also shortened by Haiku when it first appears; only the title is sent (no conversation). Settings can turn that off, or turn off naming after titles altogether.
 - `spaces-tree`'s **Open in Finder** runs `open <folder>` on the agent's current folder, only when you ask.
-- `agents-list` and `sidebar-menu` read nothing outside Herdr. `black-sun-settings` keeps its settings in Herdr's shared state, and writes `keys.json` only when you click **Add missing keys** (it adds black-sun's section and changes nothing else). Its yolo switch writes Herdr's `programs.json` when you flip it: it adds `--dangerously-skip-permissions` to how Claude Code starts and `--dangerously-bypass-approvals-and-sandbox` to Codex's (and takes them out again), so it applies to every menu and layout in Herdr, and leaves the rest of the file as it is.
+- `agents-list` and `sidebar-menu` read nothing outside Herdr. `black-sun-settings` keeps its settings and the space tags in Herdr's shared state, and writes `keys.json` only when you click **Add missing keys** (it adds black-sun's section and changes nothing else). Its yolo switch writes Herdr's `programs.json` when you flip it: it adds `--dangerously-skip-permissions` to how Claude Code starts and `--dangerously-bypass-approvals-and-sandbox` to Codex's (and takes them out again), so it applies to every menu and layout in Herdr, and leaves the rest of the file as it is.
 - `mcp-tree` reads the same session files plus MCP configs: `~/.claude.json` (through a small Python filter that passes on only server names, URLs without credentials or query, program names, and header and environment variable *names*, never their values), the project's `.mcp.json`, and enabled plugins' `.mcp.json`. It never shows a secret, never writes anything and never runs the commands it shows.
 
 For the hotkeys (⌘⇧R, ⌘⇧A, ⌘⇧C, ⌘⇧X, ⌘⇧F), add this to `~/.config/herdr-app/keys.json` (installing the layout doesn't touch your keys):

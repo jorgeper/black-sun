@@ -222,7 +222,8 @@ export function pluginInfo(manifest, meta, counts) {
 //        gitRoot, linkedFrom } — all read from disk by load.js, nothing generated.
 export function skillInfo(skill, ctx) {
   const step = (text, cmd) => (cmd ? { text, cmd } : { text });
-  const linked = ctx.linkedFrom ? [["Linked from", ctx.linkedFrom]] : [];
+  // A linked skill: the link Claude reads it through, and the real folder that link ends at.
+  const linked = ctx.linkedFrom ? [["Linked from", ctx.linkedFrom], ...(skill.path ? [["Points to", skill.path]] : [])] : [];
   switch (skill.group) {
     case "plugins": {
       const m = ctx.pluginMeta;
@@ -267,7 +268,7 @@ export function skillInfo(skill, ctx) {
         source.push(["Made by hand", "no installer or repo found"]);
         update = [step("Edit its SKILL.md. Sessions pick up the change when they restart.")];
         remove = [step(ctx.linkedFrom
-          ? `Delete the link ${ctx.linkedFrom}, and the folder it points to if nothing else uses it.`
+          ? `Delete the link ${ctx.linkedFrom}, and the folder it points to (${skill.path}) if nothing else uses it.`
           : `Delete its folder ${skill.path}.`)];
       }
       return {

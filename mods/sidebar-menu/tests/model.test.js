@@ -13,8 +13,8 @@ const keyOf = (a) => keys[a] ?? "";
 
 test("spaceItems: installed agents first (hotkey, else their number), then Terminal, the space's own items, Close", () => {
   const items = spaceItems(known, "main", "s1", keyOf);
-  assert.deepEqual(items.map((i) => i.header ?? i.label), ["Start an agent", "Claude Code", "Codex", "Terminal", "Rename", "New worktree", "Open worktree", "Close"]);
-  const [, claude, codex, term, rename, , , close] = items;
+  assert.deepEqual(items.map((i) => i.header ?? i.label), ["Start an agent", "Claude Code", "Codex", "Terminal", "Rename", "New worktree", "Open worktree", "Tag", "Add tags…", "Close"]);
+  const [, claude, codex, term, rename, , , , , close] = items;
   assert.deepEqual([claude.cmd, claude.args, claude.key], ["tab.new", { name: "<new>", space: "s1", argv: ["claude"] }, "cmd-shift-c"]);
   assert.equal(codex.key, "2");
   assert.deepEqual([claude.agent, codex.agent], ["claude", "codex"]);
@@ -34,4 +34,16 @@ test("spaceItems: worktree items follow the space's checkout", () => {
 
 test("spaceItems: while agents are unknown, just Terminal under the header", () => {
   assert.deepEqual(spaceItems([], null, "s1", keyOf).slice(0, 2).map((i) => i.header ?? i.label), ["Start an agent", "Terminal"]);
+});
+
+test("spaceItems: each tag is an item under Tag; the space's own has ✓ and untags when picked", () => {
+  const tags = [{ id: "t1", name: "ephemeral", color: "#e5534b" }, { id: "t2", name: " ", color: "#5b8def" }];
+  const items = spaceItems(known, null, "s1", keyOf, tags, "t2");
+  const at = items.findIndex((i) => i.header === "Tag");
+  assert.deepEqual(items.slice(at + 1, at + 4), [
+    { label: "ephemeral", dot: "#e5534b", tag: "t1", key: "" },
+    { label: "Untitled tag", dot: "#5b8def", tag: null, key: "✓" },
+    { label: "Edit tags…", icon: "mods/workspace-chrome/settings.svg", settings: true, key: "" },
+  ]);
+  assert.equal(items.at(-1).label, "Close");
 });

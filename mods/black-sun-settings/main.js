@@ -5,9 +5,13 @@
 // keys.json, only when clicked. Yolo mode lives in programs.json (Herdr's start commands for every
 // menu and layout): the switch reads it there and writes it only when flipped. The look (theme,
 // fonts) is Herdr's: a link opens Settings → Look.
+// Space tags (shared "black-sun.tags", see tags.js) are made here: add, name, color, remove, and
+// how spaces-tree shows them (a square, or the whole row), and which one a new space starts with.
+// A space gets its tag from its menu.
 import { View, div } from "gpui-kit";
-import { v_flex, h_flex } from "gpui-base";
+import { v_flex, h_flex, InputState, Input } from "gpui-base";
 import { theme, layout, props, closeOverlay, shared, setShared, run, keys, appHome, readTextFile, writeTextFile } from "herdr";
+import { KEY as TAGS, COLORS, normalize as tagState, tagName, addTag, updateTag, removeTag, setStyle, setDefault, ink } from "./tags.js";
 import { KEY, DEFAULTS, normalize, USAGE_MINUTES, ROW_RANGE, TAB_RANGE, hotkeyState, addHotkeys, applyYolo, yoloState } from "./model.js";
 
 const PROGRAMS = () => `${appHome()}/programs.json`;
@@ -36,11 +40,70 @@ export default class BlackSunSettings extends View {
   init(_props, cx) {
     this.keysNote = null;
     this.yoloNote = null;
+    // One name field per tag (a field is made here or in a click, never while drawing).
+    this.names = new Map();
+    for (const tag of tagState(shared(TAGS)).tags) this.nameField(tag);
     // Yolo: true, false, "some" (one of the two), null (programs.json unreadable), undefined (reading).
     cx.spawn(async (cx) => {
         try { this.yolo = yoloState(await readTextFile(PROGRAMS())); } catch { this.yolo = null; }
         cx.notify();
     });
+  }
+
+  // A tag's name field: typing renames the tag.
+  nameField(tag) {
+    const input = InputState.new({ placeholder: "Tag name", value: tag.name });
+    input.on("change", (_e, cx) => {
+      setShared(TAGS, updateTag(tagState(shared(TAGS)), tag.id, { name: input.value() }));
+      cx.notify();
+    });
+    input.on("focus", (_e, cx) => { this.naming = tag.id; cx.notify(); });
+    input.on("blur", (_e, cx) => { if (this.naming === tag.id) this.naming = null; cx.notify(); });
+    this.names.set(tag.id, input);
+    return input;
+  }
+
+  // The SPACE TAGS section: how tags show, the tag new spaces start with, each tag (color, name,
+  // colors to pick, remove), Add tag.
+  tagRows(t, row, choiceOf, link) {
+    const tags = tagState(shared(TAGS));
+    const put = (next) => setShared(TAGS, next);
+    const swatch = (tag, c) => div().id(`tag-${tag.id}-${c}`).size(16).flex_none().rounded(5).bg(c).cursor_pointer()
+      .border(2).border_color(c === tag.color ? t.foreground : c)
+      .hover((st) => st.opacity(0.8))
+      .on_click((_e, cx) => { put(updateTag(tagState(shared(TAGS)), tag.id, { color: c })); cx.notify(); });
+    const tagRow = (tag) => {
+      const input = this.names.get(tag.id);
+      return h_flex().id(`tag-${tag.id}`).min_h(40).px(14).py(4).gap(10).items_center()
+        // What a space with this tag looks like as a row.
+        .child(div().w(52).h(22).flex_none().rounded(6).bg(tag.color).flex().items_center().justify_center()
+          .text_size(11.5).font_medium().text_color(ink(tag.color)).child("Aa"))
+        .child(input
+          ? Input.new(input).flex_1().min_w(0).h(28).px(8).rounded(7).border_1().border_color(this.naming === tag.id ? t.accent : t.input)
+              .bg(t.background).text_size(12.5).text_color(t.foreground)
+          : div().flex_1().min_w(0).truncate().child(tag.name))
+        .child(h_flex().flex_none().gap(4).children(COLORS.map((c) => swatch(tag, c))))
+        .child(div().id(`tag-${tag.id}-rm`).flex_none().px(4).text_color(t.dim).cursor_pointer().tooltip("Remove this tag; its spaces become untagged")
+          .hover((st) => st.text_color(t.blocked))
+          .on_click((_e, cx) => { this.names.delete(tag.id); put(removeTag(tagState(shared(TAGS)), tag.id)); cx.notify(); })
+          .child("✕"));
+    };
+    return [
+      row("tag-style", "Show a space's tag as", "A colored square before its name, or the whole row in the tag's color",
+        choiceOf("tag-style-c", [["square", "Square"], ["row", "Row"]], tags.style, (v) => put(setStyle(tagState(shared(TAGS)), v)))),
+      ...(tags.tags.length ? [row("tag-default", "New spaces start with", null,
+        choiceOf("tag-default-c", [["", "No tag"], ...tags.tags.map((x) => [x.id, [...tagName(x)].slice(0, 14).join("")])], tags.default ?? "",
+          (v) => put(setDefault(tagState(shared(TAGS)), v || null))))] : []),
+      ...tags.tags.map(tagRow),
+      row("tag-add", tags.tags.length ? `${tags.tags.length} tag${tags.tags.length === 1 ? "" : "s"}` : "No tags yet",
+        "Give a space its tag from its right-click menu",
+        link("tag-add-l", "Add tag", (_e, cx) => {
+          const { state, id } = addTag(tagState(shared(TAGS)));
+          put(state);
+          this.nameField(state.tags.find((x) => x.id === id)).focus();
+          cx.notify();
+        })),
+    ];
   }
 
   setYolo(on, cx) {
@@ -108,14 +171,16 @@ export default class BlackSunSettings extends View {
         .child(div().w(18).text_size(12.5).text_center().text_color(t.foreground).child(String(value)))
         .child(btn("up", "+", value < hi));
     };
-    // 1m 5m 15m 30m
-    const choice = (id, values, current, put) => h_flex().flex_none().rounded(6).border(1).border_color(t.border).bg(t.raised).p(2).gap(2)
-      .children(values.map((v) => div().id(`${id}-${v}`).px(8).h(20).flex().items_center().rounded(4).text_size(12).cursor_pointer()
+    // One of a few: [value, label] pairs.
+    const choiceOf = (id, options, current, put) => h_flex().flex_none().rounded(6).border(1).border_color(t.border).bg(t.raised).p(2).gap(2)
+      .children(options.map(([v, text]) => div().id(`${id}-${v}`).px(8).h(20).flex().items_center().rounded(4).text_size(12).cursor_pointer()
         .text_color(v === current ? t.foreground : t.muted)
         .when(v === current, (el) => el.bg(t.selected))
         .when(v !== current, (el) => el.hover((st) => st.bg(t.hover)))
         .on_click((_e, cx) => { put(v); cx.notify(); })
-        .child(`${v}m`)));
+        .child(text)));
+    // 1m 5m 15m 30m
+    const choice = (id, values, current, put) => choiceOf(id, values.map((v) => [v, `${v}m`]), current, put);
     const link = (id, text, go) => div().id(id).flex_none().text_size(12.5).text_color(t.accent).cursor_pointer()
       .hover((st) => st.underline()).on_click(go).child(text);
 
@@ -129,6 +194,8 @@ export default class BlackSunSettings extends View {
         const shown = !find(lay, x.id)?.hidden;
         return row(`sec-${x.id}`, x.label, null, toggle(`sec-t-${x.id}`, shown, () => run("layout.toggle", { id: x.id })));
       }))
+      .child(heading("SPACE TAGS"))
+      .children(this.tagRows(t, row, choiceOf, link))
       .child(heading("NEW AGENTS"))
       .child(row("yolo", "Start Claude Code and Codex in yolo mode",
         this.yolo === null ? "Couldn't read programs.json"

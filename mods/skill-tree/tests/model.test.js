@@ -193,6 +193,7 @@ test("skillInfo: personal skill installed with npx skills", () => {
   assert.deepEqual(i.source, [
     ["Installed with", "npx skills, from github.com/vercel-labs/skills"],
     ["Linked from", "/h/.claude/skills/find-skills"],
+    ["Points to", "/h/.agents/skills/find-skills"],
   ]);
   assert.deepEqual(cmds(i.update), ["npx skills update"]);
   assert.deepEqual(cmds(i.remove), ["npx skills remove --global find-skills"]);
@@ -214,10 +215,12 @@ test("skillInfo: hand-made personal skill has no commands, only what to edit or 
     { name: "d2-diagrams", display: "d2-diagrams", group: "yours", path: "/h/.agents/skills/d2-diagrams" },
     { ...base, linkedFrom: "/h/.claude/skills/d2-diagrams" },
   );
-  assert.deepEqual(i.source, [["Made by hand", "no installer or repo found"], ["Linked from", "/h/.claude/skills/d2-diagrams"]]);
+  assert.deepEqual(i.source, [["Made by hand", "no installer or repo found"], ["Linked from", "/h/.claude/skills/d2-diagrams"], ["Points to", "/h/.agents/skills/d2-diagrams"]]);
   assert.deepEqual(cmds(i.update), []);
   assert.match(i.update[0].text, /SKILL\.md/);
   assert.match(i.remove[0].text, /\/h\/\.claude\/skills\/d2-diagrams/);
+  // The folder the link points to is named too.
+  assert.match(i.remove[0].text, /points to \(\/h\/\.agents\/skills\/d2-diagrams\)/);
 });
 
 test("skillInfo: project skill applies only in its folder and mentions committing when in git", () => {

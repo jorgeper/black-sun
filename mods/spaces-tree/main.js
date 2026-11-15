@@ -1,7 +1,11 @@
 // Workspace spaces (cloned from Herdr's `spaces`), with each space's agents listed
 // under it. A space's chevron folds its agents; the header's chevron folds or opens
-// them all. Folds are kept per space. Otherwise as `spaces`: stable colored avatars,
-// worktrees under their checkout, grouped by machine when more than one is known.
+// them all. Folds are kept per space. Otherwise as `spaces`: worktrees under their checkout,
+// grouped by machine when more than one is known. Instead of a lettered avatar, a space shows
+// its tag (shared "black-sun.tags", see tags.js; made in black-sun's settings, given from the
+// space's menu): a square in the tag's color (hollow when untagged), or, with the "row" style,
+// the whole row in that color with text that reads on it. A space made from now on starts with
+// the default tag, when one is set (the spaces already known are kept in localStorage "tags.seen").
 // Click to switch, right-click for its menu, drag to reorder; click an agent to focus it.
 
 import { View, div, svg, image } from "gpui-kit";
@@ -10,6 +14,7 @@ import { spaces, machines, panes, agents, run, openOverlay, exec, hc, theme, sha
 import { syncTargets, shortTitle, rowLabel, nameable, nameOptions, NEW } from "./names.js";
 import { autoName, shortenTitle } from "./autoname.js";
 import { duration, track } from "./times.js";
+import { KEY as TAGS, normalize as tagState, tagOf, tagName, tagNew, ink } from "./tags.js";
 
 function find(node, id) {
   if (node?.id === id) return node;
@@ -37,10 +42,6 @@ const base = (path) => path.replace(/\/+$/, "").split("/").pop();
 // Changes made outside Herdr (an editor's save, a commit in another app): looked
 // for this often, in repos the list shows, while the window is in front.
 const FALLBACK = 60000;
-
-// What a stored color name looks like on an avatar (the same in every mod
-// that draws space avatars): one strong color per hue, light and dark alike.
-const MARK = { ansi6: "#22a99a", ansi3: "#e3814f", ansi4: "#5b8def", ansi5: "#8b7cf6", ansi2: "#3fae6a", ansi1: "#d9649a" };
 
 // A space speaks up only when something in it needs you.
 export function glyph(status) {
@@ -89,6 +90,9 @@ export default class Spaces extends View {
     this.folded = new Set(JSON.parse(localStorage.getItem("machines.folded") ?? "[]"));
     // Spaces whose agents are folded away (open by default).
     this.closed = new Set(JSON.parse(localStorage.getItem("spaces.closed") ?? "[]"));
+    // The spaces known so far, so only a new one gets the default tag (null: not looked yet).
+    try { this.seenSpaces = JSON.parse(localStorage.getItem("tags.seen") ?? "null"); } catch { this.seenSpaces = null; }
+    if (!Array.isArray(this.seenSpaces)) this.seenSpaces = null;
     // Auto-name: agents being named now; the menu's last request already handled.
     this.naming = new Set();
     this.request = shared("agent-names.request")?.at ?? 0;
@@ -232,6 +236,13 @@ export default class Spaces extends View {
     const now = Date.now();
     const sp = spaces();
     this.syncTabs(sp, cx);
+    // A space not seen before starts with the default tag (black-sun's settings), if one is set.
+    const fresh = tagNew(tagState(shared(TAGS)), this.seenSpaces, sp.map((s) => s.id));
+    if (fresh.grew) {
+      this.seenSpaces = fresh.seen;
+      try { localStorage.setItem("tags.seen", JSON.stringify(fresh.seen)); } catch {}
+    }
+    if (fresh.tagged) setShared(TAGS, fresh.state);
     // The agent menu's Auto-name (sidebar-menu) asks through shared state.
     const req = shared("agent-names.request");
     if (req?.at > this.request) {
@@ -466,7 +477,8 @@ export default class Spaces extends View {
   }
 
   // A space's fold: its chevron; folded, how many agents, and the most urgent one's state.
-  spaceFold(w, list, t) {
+  // pen: the text color on a row drawn in its tag's color, else null.
+  spaceFold(w, list, t, pen = null) {
     const open = !this.closed.has(w.id);
     const top = list.reduce((m, a) => ((RANK[a.status] ?? 0) > (RANK[m] ?? 0) ? a.status : m), null);
     return h_flex()
@@ -478,9 +490,9 @@ export default class Spaces extends View {
       .items_center()
       .rounded(4)
       .text_size(11)
-      .text_color(t.dim)
+      .text_color(pen ? pen + "b3" : t.dim)
       .cursor_pointer()
-      .hover((s) => s.bg(t.hover).text_color(t.foreground))
+      .hover((s) => (pen ? s.bg(pen + "22").text_color(pen) : s.bg(t.hover).text_color(t.foreground)))
       .tooltip(open ? "Hide agents" : "Show agents")
       // Not a press on the row: no select, no drag.
       .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
@@ -500,7 +512,8 @@ export default class Spaces extends View {
   menu(w) {
     // A popup is as tall as its items; height is only the most.
     const g = this.git[where(w, panes())];
-    openOverlay({ mod: "sidebar-menu", kind: "popup", width: 240, height: 440,
+    const tags = tagState(shared(TAGS)).tags.length;
+    openOverlay({ mod: "sidebar-menu", kind: "popup", width: 240, height: 500 + 31 * tags,
       props: { kind: "space", target: { id: w.id, git: g ? (g.linked ? "linked" : "main") : null } } });
   }
 
@@ -660,7 +673,7 @@ export default class Spaces extends View {
   // Only what's unusual, after the name: "herdr \u00b7 spike \u21912 \u21931". The repo or
   // branch goes when the name already says it (a worktree is named after its branch),
   // and master/main go: nearly every space is on one.
-  gitTail(g, tree, name, t) {
+  gitTail(g, tree, name, t, pen = null) {
     const raw = g.branch ?? "detached";
     const same = (a) => a.toLowerCase() === name.toLowerCase();
     const branch = same(raw) || raw === "master" || raw === "main" ? "" : raw;
@@ -673,28 +686,37 @@ export default class Spaces extends View {
       .justify_end()
       .items_center()
       .text_size(11.5)
-      .text_color(t.dim)
+      .text_color(pen ? pen + "b3" : t.dim)
       .when(Boolean(where), (el) => el.child(div().min_w(0).truncate().child(where)))
-      .when(g.ahead > 0, (el) => el.child(div().flex_none().text_color(t.ansi2).child(`\u2191${g.ahead}`)))
-      .when(g.behind > 0, (el) => el.child(div().flex_none().text_color(t.ansi1).child(`\u2193${g.behind}`)));
+      .when(g.ahead > 0, (el) => el.child(div().flex_none().text_color(pen ?? t.ansi2).child(`\u2191${g.ahead}`)))
+      .when(g.behind > 0, (el) => el.child(div().flex_none().text_color(pen ?? t.ansi1).child(`\u2193${g.behind}`)));
   }
 
   row({ w, i, g, tree }, t, list = []) {
     const on = w.active;
     const fromIndex = this.pressed === null ? -1 : spaces().findIndex(s => s.id === this.pressed);
-    const colors = shared("space.colors") ?? {};
-    const color = colors[w.id] ?? "ansi6";
-    const fill = color.startsWith("#") ? color : (MARK[color] ?? t[color]);
+    // The space's tag: a square before the name, or (style "row") the row itself in its color,
+    // with `pen` the text color that reads on it; the active row then has an outline.
+    const tags = this.tags ?? tagState(shared(TAGS));
+    const tag = tagOf(tags, w.id);
+    const rows = tags.style === "row";
+    const paint = rows && tag ? tag.color : null;
+    const pen = paint ? ink(paint) : null;
+    const square = div().id(`space-tag-${w.id}`).size(18).flex_none().rounded(5)
+      .when(Boolean(tag), (el) => el.bg(tag.color).tooltip(tagName(tag)))
+      .when(!tag, (el) => el.border(1.5).border_color(t.dim + "88"));
     return v_flex()
       .relative()
       .id(`space-${w.id}`)
-      .px(8)
+      .px(paint ? 6 : 8)
       .h(rowHeight({ tree }))
       .flex_none()
       .justify_center()
       .rounded(8)
-      .when(on, (el) => el.bg(t.selected))
-      .when(!on, (el) => el.hover((s) => s.bg(t.hover)))
+      .when(Boolean(paint), (el) => el.bg(paint).border(2).border_color(on ? t.foreground : paint))
+      .when(Boolean(paint) && !on, (el) => el.hover((s) => s.opacity(0.88)))
+      .when(!paint && on, (el) => el.bg(t.selected))
+      .when(!paint && !on, (el) => el.hover((s) => s.bg(t.hover)))
       .when(this.pressed === w.id && this.over !== w.id, (el) => el.opacity(0.5))
       .when(this.pressed !== null && this.over === w.id && this.pressed !== w.id, (el) => el.child(
         div().absolute().left(0).right(0).h(2).bg(t.accent)
@@ -729,11 +751,11 @@ export default class Spaces extends View {
         h_flex()
           .gap(9)
           .items_center()
-          .when(Boolean(tree), el => el.pl(22).child(svg("mods/workspace-chrome/branch.svg").size(13).text_color(t.dim)))
-          .when(!tree, el => el.child(h_flex().size(18).flex_none().rounded(5).bg(fill).items_center().justify_center().text_size(10.5).font_bold().text_color("#ffffff").child([...w.name][0]?.toUpperCase() ?? "?")))
-          .child(div().flex_shrink(0).max_w(150).truncate().text_color(t.foreground).child(w.name))
-          .child(g ? this.gitTail(g, tree, w.name, t) : div().flex_1())
-          .when(list.length > 0, (el) => el.child(this.spaceFold(w, list, t))),
+          .when(Boolean(tree), el => el.pl(22).child(svg("mods/workspace-chrome/branch.svg").size(13).text_color(pen ? pen + "b3" : t.dim)))
+          .when(!tree && !rows, el => el.child(square))
+          .child(div().flex_shrink(0).max_w(150).truncate().text_color(pen ?? t.foreground).child(w.name))
+          .child(g ? this.gitTail(g, tree, w.name, t, pen) : div().flex_1())
+          .when(list.length > 0, (el) => el.child(this.spaceFold(w, list, t, pen))),
       );
   }
 
@@ -768,6 +790,7 @@ export default class Spaces extends View {
       changed = true;
     }
     if (changed) setShared("space.colors", kept);
+    this.tags = tagState(shared(TAGS));
     this.byspace = this.agentsBySpace();
     const tabs = new Map(sp.flatMap((s) => s.tabs ?? []).map((tab) => [tab.id, tab]));
     this.tabsById = tabs;
