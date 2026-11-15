@@ -1,64 +1,34 @@
-# black-sun
+<h1 align="center">
+  <img src="assets/black-sun.png" alt="" width="72" align="absmiddle"> black sun
+</h1>
 
-A [Herdr](https://herdr.dev) layout for running many Claude Code and Codex agents at once: every space with its agents under it, names that say what each agent is doing, a grid view that puts terminals from any spaces next to each other, right-click menus to start, rename and close agents, and buttons that show which skills and MCP servers each agent has loaded.
+<p align="center">
+  A <a href="https://herdr.dev">Herdr</a> layout for running many coding agents at once<br>
+  and always knowing which one needs you.
+</p>
 
-## Features
+## What it does
 
-**Sidebar**, top to bottom:
+black-sun turns Herdr into a control room for Claude Code and Codex agents. Every space (a project, a branch, a worktree) is a box in the sidebar with its agents and terminals inside, each named after what it is doing. A glow on the right of each row tells you at a glance who is working, who is done and who is waiting for you, and ⌘1–9 jump to any of them from anywhere.
 
-- **Spaces with their agents and terminals.** Each space is a box with its agents and plain terminals inside. Each row shows its number (what ⌘1–9 goes to: counted down the whole sidebar, so ⌘3 is the same agent wherever you are, or within each space; a setting), its icon and name, how long it has been in its current state, and that state (working, needs you, done, idle). A space with no agents has an **Add terminal or agent** row. Chevrons fold one space, or all of them.
-- **The focused one stands out.** The agent or terminal with the keyboard is tinted in a highlight color you choose, starting in its space's color and fading into the highlight, and its pane, and its space's box in the sidebar, have their border in that color. What an agent is doing glows in from the right edge of its row, in place of the spinner and status icons: yellow while it works (slowly pulsing), blue when it's done, red when it needs you, a faint gray when idle. How long it has been that way sits right after its name.
-- **Tabs that match.** The tab bar's tabs look the same in normal and grid view: square, with the space's tag, the shown one fading into the highlight, and the agent's status glowing on the right.
-- **Spaces that stay.** Closing a space's last terminal or agent leaves the space, empty, with an **Add terminal or agent** button, until you close the space itself (a setting, on by default).
-- **Space tags.** Make your own tags, each a name and a color (say "ephemeral" and "permanent"), and give each space one from its right-click menu. A space shows its tag as its color coming in from the left of its row, as a colored square before its name, or as the whole row in that color with text that stays readable on it. New spaces can start with a tag you choose.
-- **A foldable Agents list.** Herdr's Agents list, sorted by priority or grouped by space. The chevron in its header folds it down to the header to give Spaces the room.
-- **Skills · N.** Click it to see the skills a Claude agent has loaded, grouped by where they come from (this project, yours, your claude.ai account, each plugin, built in), plus the project's `.agents/skills` in a group of its own (Codex reads that folder; Claude Code doesn't). An agent dropdown switches agents; picking a Codex or other agent shows the `.agents/skills` folders it can read (the project's and your personal one), and Global shows installed Claude skills plus shared personal skills from `~/.agents/skills` (under Yours), without duplicates. A skill's or plugin's **ⓘ** shows its kind, source, location on disk, description, and how to update or remove it.
-- **MCP · N.** The same for MCP servers: which connected and which failed (a red dot, all the way up the tree), the tools each one gave the agent, its instructions, its config with every secret value hidden, and how to fix a failed server.
-- **Weekly usage.** Bars for Claude, Fable and Codex: how much of the weekly limit is used, and when it resets.
+A grid view puts terminals from different spaces next to each other, in any arrangement of rows and columns, so you can watch several agents at once. Two buttons in the sidebar show exactly which skills and MCP servers each agent has loaded and where they come from. Bars at the bottom show how much of your weekly Claude and Codex limits is used.
 
-**Grid view** (the **Grid** button at the right end of the tab bar):
+This is how I like to run my agents, so it is built around my own workflow. It has some features I think are cool, and I will keep changing it as it suits me.
 
-- Shows terminals from any spaces next to each other in the work area, in place of the shown space's tabs. Agents and plain terminals alike, each as a card with a title bar; the one with the keyboard has its border in the highlight color. The tab bar gives way to a plain bar with **+** and the grid's buttons, since each card's title is its tab.
-- Add a terminal from an agent's or a space's right-click menu (**Add to grid view**), by dragging an agent from the sidebar, or with **+** in the bar above the grid. **✕** on a card, or its right-click menu, takes it out; it keeps running.
-- **Arrange** shows the grid as small tiles to drag into rows and columns, nested as deep as you like: one terminal can take a full-height column while others stack beside it. While you drag, a see-through tile shows exactly where the terminal would land and how big it would be. A tile's edge puts it beside that tile; closer to the edge, beside the bigger group that ends there, up to the whole grid. A tile's middle swaps the two. Drag the gaps to resize.
-- **Side by side** puts everything back in one row, each the same width.
+It is a layout plus eleven small mods. Installing it leaves your own layouts and mods as they are, and `Ctrl+Shift+L` switches back.
 
-**Agent names:**
+## What it looks like
 
-- An agent's sidebar row and its tab show the same name: up to 5 words on the row, 2–3 on the tab. They come from the agent's own title, and a title too long for the tab is shortened by Claude Haiku.
-- A just-started agent reads `<new>` until it says what it's doing.
-- **Rename** (F2) lets you type a name. **Auto-name** (⌘⇧R) names an agent after what its session is doing now, read from its last few exchanges. **Auto-name all** (⌘⇧A) does every agent at once. The automatic names never replace a name you typed; only Auto-name, when you ask, does.
-- **Open in Finder** (⌘⇧F) opens a Finder window on the folder an agent is in now (agents on this computer only).
+![The sidebar with four spaces, their agents and status glows, and the tab bar](assets/screens/sidebar-and-tabs.png)
 
-**Right-click menus** (drawn like Herdr's own, with their hotkeys):
+*Spaces as boxes with their agents and terminals. The focused agent fades from its space's color into the highlight; yellow is working, blue is done, red needs you.*
 
-- **On an agent:** Rename, Auto-name, Auto-name all, Open in Finder, Add to (or Remove from) grid view, and Close (closes the whole tab when the agent is alone in it, otherwise just its pane).
-- **On a space:** start Claude Code, Codex, any other installed agent, or a terminal in *that* space, then Rename, worktrees, add all of its terminals to grid view, its tag (pick one, or pick the checked one to remove it) and Close.
-- ⌘⇧C and ⌘⇧X start Claude Code or Codex in the space you're in, from anywhere.
-
-| Hotkey | Does |
+| | |
 |---|---|
-| ⌘⇧C / ⌘⇧X | New Claude Code / Codex agent in this space |
-| F2 | Rename the agent's tab |
-| ⌘⇧R | Auto-name the focused agent |
-| ⌘⇧A | Auto-name every agent |
-| ⌘⇧F | Open the focused agent's folder in Finder |
-| ⌘1–9 | Go to the agent or terminal with that number, in any space (or, with numbers per space, in the space you're in) |
-
-The ⌘⇧ keys, and ⌘1–9 across spaces, need lines in your `keys.json`: Settings adds them for you, or see below. Without them ⌘1–9 stay Herdr's own: the tabs of the space you're in.
-
-**Settings** (the gear in the Spaces header; a window you can drag, with − and + to make it smaller or bigger, and it opens again where and as big as you left it):
-
-- Show or hide the Agents list, Skills, MCP and Weekly usage; list plain terminals in spaces or only agents; offer **Add terminal or agent** in spaces with no agents; keep spaces when their last terminal is closed; number agents and terminals down the whole sidebar (the default) or per space.
-- **Colors**: pick a palette of 12 colors from 15 built-in ones (Black Sun, Nord, Catppuccin, Dracula, Gruvbox, Solarized, Tokyo Night, Rosé Pine and more), or duplicate one and make it yours: rename it, and change any color with a picker (hue, saturation, brightness, or a hex code). Tag colors and the highlight color come from the selected palette, so picking another palette recolors them all. Four switches: gradients on spaces, gradients on agents and terminals, the status glow on the right, and a pulse for working agents.
-- **Space tags**: add, name, color and remove tags; show a space's tag as a square or as the whole row; and pick the tag new spaces start with.
-- **Yolo mode**: start every new Claude Code and Codex agent without permission prompts (Codex also without its sandbox).
-- Agent names: name agents after their titles or not, how many words go on a sidebar row (3–8) and on a tab (2–4), and whether Haiku shortens long tab names or words are simply cut.
-- How often Claude and Fable usage refreshes (1, 5, 15 or 30 minutes).
-- Which black-sun hotkeys are set, with a button that adds the missing ones to `keys.json`.
-- A link to Herdr's own Settings → Look for the theme and fonts.
-
-The rest is Herdr's own: panes as cards (with square corners here), Files and Changes panels, status bar.
+| ![Grid view: four terminals from three spaces](assets/screens/grid-view.png) | ![Arranging the grid by dragging a tile](assets/screens/arrange.png) |
+| *Grid view: terminals from three spaces, one of them a full-height column.* | *Arrange: drag a tile; the see-through tile shows where it lands.* |
+| ![The settings window with color palettes and a color picker](assets/screens/settings-colors.png) | ![A space's right-click menu](assets/screens/space-menu.png) |
+| *Settings: palettes, the highlight color, gradients and the status glow.* | *A space's menu: start an agent there, worktrees, grid view, tags.* |
 
 ## Install
 
@@ -68,7 +38,91 @@ Ask any coding agent:
 Read ~/.config/herdr-app/AGENTS.md, then add this layout: herdr.dev/layouts/jorgeper/black-sun
 ```
 
-It reads every file first, adds the layout and its mods next to yours (yours stay as they are), and switches to it. `Ctrl+Shift+L` switches back.
+It reads every file first, adds the layout and its mods next to yours (yours stay as they are), and switches to it. `Ctrl+Shift+L` switches back. It needs macOS and Claude Code.
+
+For the hotkeys, open black-sun's settings (the gear in the Spaces header) and click **Add missing keys**, or add them yourself ([see below](#hotkeys-in-keysjson)).
+
+## What black-sun gives you
+
+### Spaces, agents and terminals
+
+- **Each space is a box** in the sidebar with its agents and plain terminals inside. Chevrons fold one space, or all of them down to just the spaces.
+- **Each row** shows its number, its icon and name, and right after the name how long it has been in its current state.
+- **Numbers you can jump to.** Rows count 1, 2, 3… down the whole sidebar, so ⌘3 is the same agent wherever you are. A setting counts them per space instead.
+- **Spaces that stay.** Closing a space's last terminal or agent leaves the space, empty, with an **Add terminal or agent** button, until you close the space itself.
+- **Worktrees** sit under their checkout, and spaces on other machines are grouped under the machine.
+- **A foldable Agents list.** Herdr's Agents list, sorted by priority or grouped by space; its chevron folds it down to its header to give Spaces the room.
+
+### Status and focus at a glance
+
+- **Status is a glow** coming in from the right edge of a row, in place of spinners and dots: yellow while an agent works (slowly pulsing), blue when it's done, red when it needs you, a faint gray when idle.
+- **The focused one stands out.** The agent or terminal with the keyboard is tinted in a highlight color you choose, starting in its space's color and fading into the highlight. Its pane and its space's box have their border in that color.
+- **The same everywhere.** Sidebar rows, the tab bar's tabs and grid view's card titles are all drawn the same way.
+
+### Grid view
+
+- **Terminals from any spaces next to each other**, in place of the shown space's tabs: the **Grid** button at the right end of the tab bar. Agents and plain terminals alike, each a card with a title bar.
+- **Add** a terminal from an agent's or a space's right-click menu, by dragging an agent from the sidebar, or with **+** above the grid. **✕** on a card takes it out; it keeps running.
+- **Arrange** shows the grid as small tiles to drag into rows and columns, nested as deep as you like: one terminal can take a full-height column while others stack beside it. A see-through tile shows where the terminal would land and how big it would be. A tile's edge puts it beside that tile; closer to the edge, beside the bigger group that ends there; its middle swaps the two. Drag the gaps to resize.
+- **Side by side** puts everything back in one row, each the same width.
+
+### Agent names
+
+- An agent's sidebar row and its tab show the same name: up to 5 words on the row, 2–3 on the tab. They come from the agent's own title; one too long for the tab is shortened by Claude Haiku.
+- A just-started agent reads `<new>` until it says what it's doing.
+- **Rename** (F2) lets you type a name. **Auto-name** (⌘⇧R) names an agent after what its session is doing now. **Auto-name all** (⌘⇧A) does every agent at once. Automatic names never replace one you typed.
+
+### Skills
+
+- **Skills · N** in the sidebar opens a dialog with the skills a Claude agent has loaded, grouped by where they come from: this project, yours, your claude.ai account, each plugin, and built in. The project's `.agents/skills` (which Codex reads) is a group of its own.
+- A dropdown switches agents. A Codex or other agent shows the `.agents/skills` folders it can read; **Global** shows everything installed, without duplicates.
+- A skill's or plugin's **ⓘ** shows its kind, source, location on disk, description, and how to update or remove it.
+
+### MCP servers
+
+- **MCP · N** does the same for MCP servers: which connected and which failed (a red dot, all the way up the tree), the tools each one gave the agent, and its instructions.
+- A server's **ⓘ** shows its status or error and how to fix it, and its config with every secret value hidden.
+
+### Usage
+
+- **Weekly usage** bars for Claude, Fable and Codex: how much of the weekly limit is used, and when it resets.
+
+### Menus and hotkeys
+
+- **Right-click an agent:** Rename, Auto-name, Auto-name all, Open in Finder, Add to (or Remove from) grid view, and Close (the whole tab when the agent is alone in it, otherwise just its pane).
+- **Right-click a space:** start Claude Code, Codex, any other installed agent, or a terminal in *that* space; then Rename, worktrees, add all of its terminals to grid view, its tag, and Close.
+
+| Hotkey | Does |
+|---|---|
+| ⌘1–9 | Go to the agent or terminal with that number, in any space (or, with numbers per space, in the space you're in) |
+| ⌘⇧C / ⌘⇧X | New Claude Code / Codex agent in the space you're in |
+| F2 | Rename the agent's tab |
+| ⌘⇧R | Auto-name the focused agent |
+| ⌘⇧A | Auto-name every agent |
+| ⌘⇧F | Open the focused agent's folder in Finder |
+
+The ⌘⇧ keys, and ⌘1–9 across spaces, need lines in your `keys.json`: Settings adds them for you. Without them ⌘1–9 stay Herdr's own: the tabs of the space you're in.
+
+### Colors and tags
+
+- **Palettes.** Pick a palette of 12 colors from 15 built-in ones (Black Sun, Nord, Catppuccin, Dracula, Gruvbox, Solarized, Tokyo Night, Rosé Pine and more), or duplicate one and make it yours: rename it, and change any color with a picker (hue, saturation, brightness, or a hex code).
+- **One palette colors everything.** Tag colors and the highlight color come from the selected palette, so picking another palette recolors them all.
+- **Space tags.** Make your own tags, each a name and a color (say "ephemeral" and "permanent"), and give each space one from its right-click menu. A space shows its tag as a colored square, as the whole row in that color, or (with gradients on spaces, off by default) as its color coming in from the left of its row. New spaces can start with a tag you choose.
+- **Four switches:** gradients on agents and terminals, the status glow and the pulse for working agents are on; gradients on spaces are off until you turn them on.
+
+### Settings
+
+The gear in the Spaces header opens a window you can drag, with − and + to make it smaller or bigger; it opens again where and as big as you left it.
+
+- **Sidebar:** show or hide the Agents list, Skills, MCP and Weekly usage; list plain terminals or only agents; offer **Add terminal or agent** in spaces with no agents; keep spaces when their last terminal is closed; number rows down the whole sidebar or per space.
+- **Colors** and **Space tags:** as above.
+- **Yolo mode:** start every new Claude Code and Codex agent without permission prompts (Codex also without its sandbox).
+- **Agent names:** name agents after their titles or not, how many words go on a sidebar row (3–8) and on a tab (2–4), and whether Haiku shortens long tab names or words are simply cut.
+- **Usage:** how often Claude and Fable usage refreshes (1, 5, 15 or 30 minutes).
+- **Hotkeys:** which black-sun hotkeys are set, with a button that adds the missing ones to `keys.json`.
+- A link to Herdr's own Settings → Look for the theme and fonts.
+
+The rest is Herdr's own: panes as cards (with square corners here), Files and Changes panels, status bar.
 
 ## Mods
 
@@ -96,6 +150,8 @@ It reads every file first, adds the layout and its mods next to yours (yours sta
 - `agents-list`, `sidebar-menu`, `black-sun-brand`, `black-sun-tabs` and `black-sun-empty` read nothing outside Herdr. `black-sun-settings` keeps its settings, the color palettes and the space tags in Herdr's shared state, and writes `keys.json` only when you click **Add missing keys** (it adds black-sun's section and changes nothing else). Its yolo switch writes Herdr's `programs.json` when you flip it: it adds `--dangerously-skip-permissions` to how Claude Code starts and `--dangerously-bypass-approvals-and-sandbox` to Codex's (and takes them out again), so it applies to every menu and layout in Herdr, and leaves the rest of the file as it is.
 - `mcp-tree` reads the same session files plus MCP configs: `~/.claude.json` (through a small Python filter that passes on only server names, URLs without credentials or query, program names, and header and environment variable *names*, never their values), the project's `.mcp.json`, and enabled plugins' `.mcp.json`. It never shows a secret, never writes anything and never runs the commands it shows.
 
+## Hotkeys in keys.json
+
 For the hotkeys (⌘⇧R, ⌘⇧A, ⌘⇧C, ⌘⇧X, ⌘⇧F, and ⌘1–9), add this to `~/.config/herdr-app/keys.json` (installing the layout doesn't touch your keys):
 
 ```json
@@ -117,7 +173,7 @@ For the hotkeys (⌘⇧R, ⌘⇧A, ⌘⇧C, ⌘⇧X, ⌘⇧F, and ⌘1–9), add
 }
 ```
 
-macOS, Claude Code. Details for agents (and for rebuilding it) are in [RECIPE.md](RECIPE.md).
+Details for agents (and for rebuilding it) are in [RECIPE.md](RECIPE.md).
 
 ## Updating
 

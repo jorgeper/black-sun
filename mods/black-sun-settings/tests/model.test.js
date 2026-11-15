@@ -5,8 +5,8 @@ import { DEFAULTS, normalize, resized, HOTKEYS, NUMBER_KEYS, numberKeyState, hot
 
 test("normalize fills defaults and keeps only sane values", () => {
   assert.deepEqual(normalize(undefined), DEFAULTS);
-  assert.deepEqual(DEFAULTS, { sync: true, rowWords: 5, tabWords: 3, haiku: true, usageMinutes: 5, highlight: "#8b7cf6", highlightSlot: 7, terminals: true, emptyAdd: true, keepSpaces: true, numbers: "global", wash: true, fade: true, glow: true, pulse: true, windowSize: [640, 760] });
-  const set = { sync: false, rowWords: 7, tabWords: 2, haiku: false, usageMinutes: 15, highlight: "#5b8def", highlightSlot: 0, terminals: false, emptyAdd: false, keepSpaces: false, numbers: "local", wash: false, fade: false, glow: false, pulse: false, windowSize: [900, 960] };
+  assert.deepEqual(DEFAULTS, { sync: true, rowWords: 5, tabWords: 3, haiku: true, usageMinutes: 5, highlight: "#8b7cf6", highlightSlot: 7, terminals: true, emptyAdd: true, keepSpaces: true, numbers: "global", wash: false, fade: true, glow: true, pulse: true, windowSize: [640, 760] });
+  const set = { sync: false, rowWords: 7, tabWords: 2, haiku: false, usageMinutes: 15, highlight: "#5b8def", highlightSlot: 0, terminals: false, emptyAdd: false, keepSpaces: false, numbers: "local", wash: true, fade: false, glow: false, pulse: false, windowSize: [900, 960] };
   assert.deepEqual(normalize({ ...set, highlight: "#5B8DEF" }), set);
   // Out of range or the wrong type: clamped or the default.
   assert.deepEqual(normalize({ sync: "no", rowWords: 40, tabWords: 0, haiku: 1, usageMinutes: 7, highlight: "purple", highlightSlot: -2, fade: "yes", windowSize: [1, 2] }),

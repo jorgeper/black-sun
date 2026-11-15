@@ -811,9 +811,9 @@ export default class Spaces extends View {
     const square = div().id(`space-tag-${w.id}`).size(18).flex_none().rounded(5)
       .when(Boolean(tag), (el) => el.bg(tag.color).tooltip(tagName(tag)))
       .when(!tag, (el) => el.border(1.5).border_color(t.dim + "88"));
-    // With gradients on spaces (black-sun-settings), a tagged space has its color coming in from
+    // With gradients on spaces (black-sun-settings; off unless turned on), a tagged space has its color coming in from
     // the left edge in place of the square.
-    const washed = !rows && !tree && !!tag && shared("black-sun.settings")?.wash !== false;
+    const washed = !rows && !tree && !!tag && shared("black-sun.settings")?.wash === true;
     return v_flex()
       .relative()
       .id(`space-${w.id}`)

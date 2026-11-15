@@ -14,7 +14,7 @@ export const USAGE_MINUTES = [1, 5, 15, 30];
 // numbers: the number before each agent and terminal, and what ⌘1–9 go to: "global" (1, 2, 3, …
 // down the whole sidebar) or "local" (a tab's place in its own space) (spaces-tree numbers.js).
 // wash: gradients on spaces: a space's row has its tag color coming in from the left in place of
-// the square (spaces-tree).
+// the square (spaces-tree). Off unless turned on.
 // fade: gradients on agents and terminals: the focused one fades from its space's tag color into
 // the highlight (spaces-tree, side-by-side).
 // glow: what an agent is doing shows as a color coming in from the right of its row, tab and card
@@ -23,7 +23,7 @@ export const USAGE_MINUTES = [1, 5, 15, 30];
 // windowSize: how big the settings window opens ([width, height]; spaces-tree reads it), one of
 // WINDOW_SIZES.
 export const WINDOW_SIZES = [[520, 640], [640, 760], [760, 860], [900, 960], [1040, 1040]];
-export const DEFAULTS = { sync: true, rowWords: 5, tabWords: 3, haiku: true, usageMinutes: 5, highlight: "#8b7cf6", highlightSlot: 7, terminals: true, emptyAdd: true, keepSpaces: true, numbers: "global", wash: true, fade: true, glow: true, pulse: true, windowSize: WINDOW_SIZES[1] };
+export const DEFAULTS = { sync: true, rowWords: 5, tabWords: 3, haiku: true, usageMinutes: 5, highlight: "#8b7cf6", highlightSlot: 7, terminals: true, emptyAdd: true, keepSpaces: true, numbers: "global", wash: false, fade: true, glow: true, pulse: true, windowSize: WINDOW_SIZES[1] };
 export const ROW_RANGE = [3, 8];
 export const TAB_RANGE = [2, 4];
 
