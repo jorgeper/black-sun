@@ -50,6 +50,7 @@ For the hotkeys, open black-sun's settings (the gear in the Spaces header) and c
 - **Each row** shows its number, its icon and name, and right after the name how long it has been in its current state.
 - **Numbers you can jump to.** Rows count 1, 2, 3… down the whole sidebar, so ⌘3 is the same agent wherever you are. A setting counts them per space instead.
 - **Spaces that stay.** Closing a space's last terminal or agent leaves the space, empty, with an **Add terminal or agent** button, until you close the space itself.
+- **Drag a space to reorder.** The space goes faint, a small card follows the pointer, and a slot with its name shows where it will land: above or below the space you're over.
 - **Worktrees** sit under their checkout, and spaces on other machines are grouped under the machine.
 - **A foldable Agents list.** Herdr's Agents list, sorted by priority or grouped by space; its chevron folds it down to its header to give Spaces the room.
 

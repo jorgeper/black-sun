@@ -13,6 +13,9 @@
 // opens to take the drop.
 // A space stays when its last terminal is closed (empty.js; black-sun-settings "Spaces stay when empty").
 // Click to switch, right-click for its menu, drag to reorder; click an agent to focus it.
+// A dragged space (reorder.js) is drawn faint where it was, as a slot in the accent color where a
+// drop would put it (above or below the box under the pointer, by which half the pointer is in),
+// and as a small card that follows the pointer.
 
 import { View, div, svg, image } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";
@@ -23,6 +26,7 @@ import { duration, track } from "./times.js";
 import { layers, glowing, wash } from "./fade.js";
 import { mode as numberMode, numbers, go } from "./numbers.js";
 import { KEY as EMPTY, step as emptyStep, placeholderTabs } from "./empty.js";
+import { DRAG, half, landing } from "./reorder.js";
 import { KEY as TAGS, normalize as tagState, tagOf, tagName, tagNew, ink } from "./tags.js";
 
 function find(node, id) {
@@ -106,8 +110,13 @@ export default class Spaces extends View {
     // worktree appears under its repo instead of jumping there.
     this.shown = new Set(spaces().map((s) => s.id));
     this.born = {};
+    // A space being reordered: `pressed` its id, `from` where the press was, `dragging` once it has
+    // moved far enough, `drop` { id, after } the space it would go before or after, `at` the pointer.
     this.pressed = null;
-    this.over = null;
+    this.from = null;
+    this.dragging = false;
+    this.drop = null;
+    this.at = null;
     this.machines = [];
     this.reconnecting = JSON.parse(localStorage.getItem("machines.reconnecting") ?? "{}");
     for (const state of Object.values(this.reconnecting)) state.busy = false;
@@ -573,7 +582,6 @@ export default class Spaces extends View {
       .tooltip(open ? "Hide agents" : "Show agents")
       // Not a press on the row: no select, no drag.
       .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
-      .on_mouse_up("left", (_e, cx) => cx.stop_propagation())
       .on_click((_e, cx) => {
         cx.stop_propagation();
         open ? this.closed.add(w.id) : this.closed.delete(w.id);
@@ -689,7 +697,19 @@ export default class Spaces extends View {
       // else the shown space.
       const at = this.sbs?.on ? focused()?.terminal : null;
       const mine = this.sbs?.on ? !!at && list.some((a) => a.address === at) : r.w.active;
-      return [v_flex().id(`space-box-${r.w.id}`).flex_none().mb(10).bg(t.background)
+      const box = v_flex().id(`space-box-${r.w.id}`).flex_none().mb(10).bg(t.background)
+        // Being dragged: faint where it was.
+        .when(this.dragging && this.pressed === r.w.id, (el) => el.opacity(0.35))
+        // A space dragged over this box: it would go above or below, by the half the pointer is in.
+        .on_mouse_move((ev, cx) => {
+          if (!this.dragging) return;
+          const source = spaces().find((s) => s.id === this.pressed);
+          const after = half(ev.local_position.y, ev.bounds.height);
+          const fits = source && (source.machine ?? null) === (r.w.machine ?? null)
+            && landing(spaces().map((s) => s.id), source.id, r.w.id, after) !== null;
+          const next = fits ? { id: r.w.id, after } : null;
+          if (next?.id !== this.drop?.id || next?.after !== this.drop?.after) { this.drop = next; cx.notify(); }
+        })
         // As thick as a card's border when it is the one; else thin, with the same room around.
         .when(mine, (el) => el.border(2).border_color(highlight()))
         .when(!mine, (el) => el.border(1).border_color(t.border).p(1))
@@ -707,7 +727,9 @@ export default class Spaces extends View {
               openOverlay({ mod: "new-menu", kind: "popup", width: 250, height: 512 });
             })
             .child(svg("mods/workspace-chrome/plus.svg").size(13).flex_none())
-            .child(div().min_w(0).truncate().child("Add terminal or agent")))))];
+            .child(div().min_w(0).truncate().child("Add terminal or agent")))));
+      if (this.drop?.id !== r.w.id) return [box];
+      return this.drop.after ? [box, this.slot(t)] : [this.slot(t), box];
     };
     const remote = [...new Set([...rows.map(r => r.w.machine).filter(Boolean), ...this.machines.map(m => m.name), ...Object.keys(this.reconnecting)])].sort();
     const loading = m => {
@@ -800,7 +822,6 @@ export default class Spaces extends View {
   row({ w, i, g, tree }, t, list = []) {
     // Grid view on: the spaces with something shown there are the selected ones.
     const on = this.sbs?.on ? this.sbs.spaces.has(w.id) : w.active;
-    const fromIndex = this.pressed === null ? -1 : spaces().findIndex(s => s.id === this.pressed);
     // The space's tag: a square before the name, or (style "row") the row itself in its color,
     // with `pen` the text color that reads on it; the active row then has an outline.
     const tags = this.tags ?? tagState(shared(TAGS));
@@ -827,34 +848,15 @@ export default class Spaces extends View {
       .when(Boolean(paint) && !on, (el) => el.hover((s) => s.opacity(0.88)))
       .when(!paint && on, (el) => el.bg(quiet(t)))
       .when(!paint && !on, (el) => el.hover((s) => s.bg(t.hover)))
-      .when(this.pressed === w.id && this.over !== w.id, (el) => el.opacity(0.5))
-      .when(this.pressed !== null && this.over === w.id && this.pressed !== w.id, (el) => el.child(
-        div().absolute().left(0).right(0).h(2).bg(t.accent)
-          .when(fromIndex < i, line => line.bottom(0))
-          .when(fromIndex > i, line => line.top(0)),
-      ))
-      .on_mouse_down("left", () => {
+      // Pressed: a click selects it; moved far enough, it is dragged (the list takes the release).
+      .on_mouse_down("left", (ev) => {
         this.pressed = w.id;
-        this.over = w.id;
+        this.from = ev.position;
+        this.dragging = false;
+        this.drop = null;
       })
-      .on_mouse_move((_e, cx) => {
-        const source = spaces().find(s => s.id === this.pressed);
-        const over = source && (source.machine ?? null) === (w.machine ?? null) ? w.id : null;
-        if (this.pressed !== null && this.over !== over) {
-          this.over = over;
-          cx.notify();
-        }
-      })
-      .on_mouse_up("left", (_e, cx) => {
-        const from = this.pressed;
-        const over = this.over;
-        this.pressed = null;
-        this.over = null;
-        if (from !== null && over === w.id && from !== w.id) {
-          const index = spaces().findIndex(s => s.id === w.id);
-          if (index !== -1) run("space.move", { id: from, index: index + 1 });
-        } else if (from === w.id) run("space.select", { id: w.id });
-        cx.notify();
+      .on_mouse_up("left", () => {
+        if (this.pressed === w.id && !this.dragging) run("space.select", { id: w.id });
       })
       .on_mouse_down("right", () => this.menu(w))
       .child(
@@ -868,6 +870,46 @@ export default class Spaces extends View {
           // A space folds when it has something under its row: agents, terminals, or the row to add one.
           .when(list.length > 0 || shared("black-sun.settings")?.emptyAdd !== false, (el) => el.child(this.spaceFold(w, list, t, pen))),
       );
+  }
+
+  // The tag square and name of the space being dragged.
+  carried(t) {
+    const w = spaces().find((s) => s.id === this.pressed);
+    if (!w) return [];
+    const tag = tagOf(this.tags ?? tagState(shared(TAGS)), w.id);
+    return [
+      div().size(14).flex_none().rounded(4)
+        .when(Boolean(tag), (el) => el.bg(tag.color))
+        .when(!tag, (el) => el.border(1.5).border_color(t.dim + "88")),
+      div().min_w(0).truncate().text_color(t.foreground).child(w.name),
+    ];
+  }
+
+  // Where a drop would put the dragged space: a place in the list of its own, in the accent color.
+  slot(t) {
+    return h_flex().id("space-drop-slot").flex_none().h(34).mb(10).px(8).gap(9).items_center()
+      .border(2).border_color(t.accent).bg(t.accent + "59").font_medium()
+      .children(this.carried(t));
+  }
+
+  // The dragged space, following the pointer.
+  ghost(t) {
+    return h_flex().absolute().left(this.at.x + 12).top(this.at.y + 10).h(32).max_w(220).px(10).gap(8).items_center()
+      .border(1).border_color(t.accent).bg(t.raised).shadow_lg().text_size(12.8)
+      .children(this.carried(t));
+  }
+
+  // The press is over: a dragged space goes where its slot was shown.
+  endDrag(drop) {
+    const { pressed, dragging, drop: to } = this;
+    this.pressed = null;
+    this.from = null;
+    this.dragging = false;
+    this.drop = null;
+    this.at = null;
+    if (!drop || !dragging || !to) return;
+    const index = landing(spaces().map((s) => s.id), pressed, to.id, to.after);
+    if (index !== null) run("space.move", { id: pressed, index: index + 1 });
   }
 
   compact({ w, i }, t) {
@@ -934,7 +976,23 @@ export default class Spaces extends View {
     // Fold all: every space with something under its row (with the add row on, that is every space).
     const withAgents = sp.filter((s) => this.byspace.has(s.id) || shared("black-sun.settings")?.emptyAdd !== false).map((s) => s.id);
     const anyOpen = withAgents.some((id) => !this.closed.has(id));
-    return v_flex().size_full().min_h(0).bg(t.chrome).text_size(13)
+    return v_flex().id("spaces-root").relative().size_full().min_h(0).bg(t.chrome).text_size(13)
+      .on_size_change((size, cx) => { this.size = size; cx.notify(); })
+      // A pressed space becomes a dragged one once the pointer has moved far enough; from then
+      // on its card follows the pointer. With a zoomed window the pointer isn't reported in the
+      // units .left() takes, so it is placed by how far across the view it is.
+      .on_mouse_move((ev, cx) => {
+        if (this.pressed === null || !this.from) return;
+        if (!this.dragging && Math.hypot(ev.position.x - this.from.x, ev.position.y - this.from.y) <= DRAG) return;
+        this.dragging = true;
+        const at = ev.local_position, b = ev.bounds, size = this.size;
+        this.at = size && b?.width > 0 && b?.height > 0
+          ? { x: at.x / b.width * size.width, y: at.y / b.height * size.height } : { x: at.x, y: at.y };
+        cx.notify();
+      })
+      // Let go anywhere in the sidebar: dropped where the slot shows. Gone from it: not dragged any more.
+      .on_mouse_up("left", (_e, cx) => { this.endDrag(true); cx.notify(); })
+      .on_hover((hovered, cx) => { if (!hovered && this.pressed !== null) { this.endDrag(false); cx.notify(); } })
       .child(h_flex().h(31).pl(16).pr(10).items_center().justify_between().text_size(11.5).text_color(t.dim)
         .when(collapsed, el => el.pl(0).pr(0).justify_center())
         .when(!collapsed, el => el.child("Spaces"))
@@ -963,13 +1021,14 @@ export default class Spaces extends View {
           .on_click(() => run("space.new")).child(svg("mods/workspace-chrome/plus.svg").size(14))))
       .child(v_flex().flex_1().min_h(0).px(collapsed ? 0 : 8).pb(14).overflow_y_scrollbar().mode("always")
         .on_mouse_up("left", (_e, cx) => {
-          this.pressed = null;
           this.grabbed = null;
           // An agent picked up for grid view and let go back here: not dropped.
           const s = shared("black-sun.sbs");
           if (s?.carry) setShared("black-sun.sbs", { ...s, carry: null, arrange: s.arrange === "drag" ? false : s.arrange });
           cx.notify();
         })
-        .children(this.grouped(t, collapsed)));
+        .children(this.grouped(t, collapsed)))
+      // Last, so it is drawn over the list.
+      .when(this.dragging && !!this.at && !collapsed, (el) => el.child(this.ghost(t)));
   }
 }
