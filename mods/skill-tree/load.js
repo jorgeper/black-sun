@@ -1,6 +1,6 @@
 // skill-tree's reads: Claude Code's session files, skill folders and plugin records on this Mac.
 // Read-only. From `ps eww` output only HC_TERMINAL_ID is kept; ~/.claude/sessions/*.key is never read.
-import { exec, readTextFile, home, agents } from "herdr";
+import { exec, readTextFile, home, agents, panes } from "herdr";
 import { readdir, exists } from "fs/promises";
 import { projectDirName, terminalIdFromPs, pickerEntries, lastListing, parseFrontMatter, buildTree, skillInfo, pluginInfo, pluginSkillPaths } from "./model.js";
 
@@ -39,7 +39,8 @@ export async function loadEntries() {
     return terminal ? { pid: s.pid, sessionId: s.sessionId, cwd: s.cwd, startedAt: s.startedAt ?? 0, terminal } : null;
   }))).filter(Boolean);
   const local = agents().filter((a) => !a.address.includes("/"));
-  return pickerEntries(sessions, local);
+  const cwds = Object.fromEntries(panes().filter((p) => p.terminal && p.cwd).map((p) => [p.terminal, p.cwd]));
+  return pickerEntries(sessions, local, cwds);
 }
 
 // A plugin folder's skills as { name: path } (plugin.json's own list, or skills/*, plus commands).
@@ -81,10 +82,41 @@ async function listingFor(entry) {
 
 const NO_LIST = "No skill list for this session yet";
 
+// Adds the project's .agents/skills (Codex and others read it; Claude Code doesn't) as a group
+// of their own. A name already listed stays where it is.
+async function addShared(cwd, names, descriptions, facts) {
+  facts.sharedSkills = {};
+  for (const [n, p] of Object.entries(cwd ? await skillDirs(`${cwd}/.agents/skills`) : {})) {
+    if (names.includes(n)) continue;
+    facts.sharedSkills[n] = p;
+    names.push(n);
+    descriptions[n] = await describe(p);
+  }
+}
+
 export async function loadAgentTree(entry) {
   const [listing, facts] = await Promise.all([listingFor(entry), loadFacts(entry.cwd)]);
-  if (!listing) return { groups: [], error: NO_LIST };
-  return { groups: buildTree(listing.names, listing.descriptions, facts), error: null };
+  const names = [...(listing?.names ?? [])];
+  const descriptions = { ...listing?.descriptions };
+  await addShared(entry.cwd, names, descriptions, facts);
+  if (!listing && !names.length) return { groups: [], error: NO_LIST };
+  return { groups: buildTree(names, descriptions, facts), error: null };
+}
+
+// An agent that isn't Claude Code (Codex, ...): the shared folders it can read, the project's
+// .agents/skills first, then the personal ~/.agents/skills. An inventory, not what it loaded.
+export async function loadFolderTree(entry) {
+  const facts = { pluginSkills: {}, projectSkills: {}, userSkills: {}, accountSkills: {}, plugins: {} };
+  const names = [];
+  const descriptions = {};
+  await addShared(entry.cwd, names, descriptions, facts);
+  for (const [n, p] of Object.entries(await skillDirs(`${home()}/.agents/skills`))) {
+    if (names.includes(n)) continue;
+    facts.userSkills[n] = p;
+    names.push(n);
+    descriptions[n] = await describe(p);
+  }
+  return { groups: buildTree(names, descriptions, facts), error: names.length ? null : "No skills in this agent's .agents/skills folders" };
 }
 
 // A skill folder's SKILL.md, or a plugin command's own .md file.
@@ -175,7 +207,7 @@ export async function loadInfo(skill, cwd) {
   const ctx = { cwd, claudeVersion: null, pluginMeta: null, lock: null, gitRoot: null, linkedFrom: null };
   if (skill.group === "plugins") ctx.pluginMeta = await pluginMeta(skill.plugin);
   if (skill.group === "builtin") ctx.claudeVersion = await claudeVersion();
-  if (skill.group === "project") ctx.gitRoot = await gitRoot(cwd);
+  if (skill.group === "project" || skill.group === "shared") ctx.gitRoot = await gitRoot(cwd);
   if (skill.group === "yours") {
     const claudeLink = `${claude()}/skills/${skill.display}`;
     const sharedLink = `${home()}/.agents/skills/${skill.display}`;

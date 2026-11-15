@@ -15,8 +15,10 @@ export function terminalIdFromPs(psOutput) {
 }
 
 // One picker entry per agent, in the agents' own order. Agents with a live Claude session are
-// `available`; the rest (Codex and other programs) are listed but can't show skills.
-export function pickerEntries(sessions, agents) {
+// `available` (their loaded skills can be shown). The rest (Codex and other programs) take
+// their folder from `cwds` ({ address: folder }); with one they are `browsable` too, showing
+// the shared .agents/skills folders instead.
+export function pickerEntries(sessions, agents, cwds = {}) {
   const byTerminal = new Map();
   for (const s of sessions) {
     if (!s.terminal) continue;
@@ -28,8 +30,8 @@ export function pickerEntries(sessions, agents) {
     const s = byTerminal.get(a.address);
     out.push({
       address: a.address, label: `${a.space_name} / ${a.tab_name}`,
-      sessionId: s?.sessionId ?? null, cwd: s?.cwd ?? null, focused: !!a.focused,
-      available: !!s, program: a.program ?? null,
+      sessionId: s?.sessionId ?? null, cwd: s?.cwd ?? cwds[a.address] ?? null, focused: !!a.focused,
+      available: !!s, browsable: !!s || !!cwds[a.address], program: a.program ?? null,
     });
   }
   return out;
@@ -107,6 +109,7 @@ export function pluginSkillPaths(dir, manifest, skillDirNames, commandFiles) {
 
 const ORDER = [
   ["project", "This project"],
+  ["shared", "This project · .agents/skills"],
   ["yours", "Yours"],
   ["account", "claude.ai account"],
   ["plugins", "Plugins"],
@@ -124,6 +127,7 @@ function classify(name, facts) {
   }
   if (facts.projectSkills[name]) return { group: "project", display: name, path: facts.projectSkills[name] };
   if (facts.userSkills[name]) return { group: "yours", display: name, path: facts.userSkills[name] };
+  if (facts.sharedSkills?.[name]) return { group: "shared", display: name, path: facts.sharedSkills[name] };
   return { group: "builtin", display: name, path: null };
 }
 
@@ -240,8 +244,10 @@ export function skillInfo(skill, ctx) {
       };
     }
     case "yours":
+    case "shared":
     case "project": {
-      const project = skill.group === "project";
+      const shared = skill.group === "shared";
+      const project = shared || skill.group === "project";
       const source = [];
       let update;
       let remove;
@@ -265,8 +271,9 @@ export function skillInfo(skill, ctx) {
           : `Delete its folder ${skill.path}.`)];
       }
       return {
-        kind: project ? "Project" : "Personal",
-        scope: project ? `Only sessions started in ${ctx.cwd}`
+        kind: shared ? "Project · shared" : project ? "Project" : "Personal",
+        scope: shared ? `In ${ctx.cwd}/.agents/skills, for Codex and other agents that read that folder. Claude Code doesn't load it.`
+          : project ? `Only sessions started in ${ctx.cwd}`
           : ctx.sharedOnly ? "Installed in the shared skills folder; available to agents that read it"
           : "Every session, in every project",
         source: [...source, ...linked],

@@ -48,7 +48,14 @@ test("pickerEntries keeps agents with no Claude session (e.g. Codex) as unavaila
   assert.equal(out.length, 1);
   assert.equal(out[0].sessionId, null);
   assert.equal(out[0].available, false);
+  assert.equal(out[0].browsable, false);
   assert.deepEqual(out[0].program, codex);
+});
+
+test("pickerEntries makes a non-Claude agent browsable when its folder is known", () => {
+  const sessions = [{ pid: 1, sessionId: "s1", cwd: "/claude", startedAt: 1, terminal: "t1" }];
+  const out = pickerEntries(sessions, [agent("t1"), agent("t5")], { t1: "/pane", t5: "/w" });
+  assert.deepEqual(out.map((e) => [e.available, e.browsable, e.cwd]), [[true, true, "/claude"], [false, true, "/w"]]);
 });
 
 test("pickerEntries marks matched agents available and passes their program through", () => {

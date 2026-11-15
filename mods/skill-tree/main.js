@@ -7,7 +7,7 @@ import { View, div, image, svg } from "gpui-kit";
 import { v_flex, h_flex, TextView, Popover } from "gpui-base";
 import { theme, layout, focused, props, openOverlay, closeOverlay, shared, setShared, settings } from "herdr";
 import { countSkills, toggleId } from "./model.js";
-import { loadEntries, loadAgentTree, loadGlobalTree, loadInfo, loadPluginInfo, reveal, copy } from "./load.js";
+import { loadEntries, loadAgentTree, loadFolderTree, loadGlobalTree, loadInfo, loadPluginInfo, reveal, copy } from "./load.js";
 
 const GLOBAL = "global";
 // Open groups, remembered across dialogs and restarts. Everything starts folded.
@@ -79,7 +79,7 @@ export default class SkillTree extends View {
       try {
         const entry = (await loadEntries()).find((e) => e.address === address && e.available);
         const t = entry ? await loadAgentTree(entry) : null;
-        if (this.watching === address) this.count = t && !t.error ? countSkills(t.groups) : null;
+        if (this.watching === address) this.count = t && !t.error ? countSkills(t.groups.filter((g) => g.id !== "shared")) || null : null;
       } catch { this.count = null; }
       cx.notify();
     });
@@ -91,11 +91,12 @@ export default class SkillTree extends View {
     cx.spawn(async (cx) => {
       try {
         this.entries = await loadEntries();
-        const ok = this.entries.filter((e) => e.available);
+        const ok = this.entries.filter((e) => e.browsable);
         const pick = want === GLOBAL ? null
           : ok.find((e) => e.address === want) ?? ok.find((e) => e.focused) ?? ok[0] ?? null;
         this.sel = pick ? pick.address : GLOBAL;
-        this.tree = pick ? await loadAgentTree(pick) : await loadGlobalTree(ok[0] ?? null);
+        this.tree = !pick ? await loadGlobalTree(this.entries.find((e) => e.available) ?? null)
+          : pick.available ? await loadAgentTree(pick) : await loadFolderTree(pick);
       } catch (e) {
         this.tree = { groups: [], error: String(e?.message ?? e) };
       }
@@ -119,7 +120,8 @@ export default class SkillTree extends View {
         .child(div().text_size(12.5).text_color(t.muted).child(label)));
   }
 
-  // The agent picker: a dropdown of every agent (only Claude Code ones can be picked), then Global.
+  // The agent picker: a dropdown of every agent (Claude Code ones show what they loaded, others
+  // the shared .agents/skills folders), then Global.
   picker(t) {
     const selected = this.entries.find((e) => e.address === this.sel);
     const current = this.sel === GLOBAL ? "Global" : selected?.label ?? "…";
@@ -128,7 +130,7 @@ export default class SkillTree extends View {
       .items_center().rounded(5)
       .when(available, (el) => el.cursor_pointer().hover((s) => s.bg(t.hover))
         .on_click((_e, cx) => { this.pickOpen = false; this.reload(cx, id); }))
-      .when(!available, (el) => el.tooltip(`${program?.name ?? "This agent"}: skills are shown for Claude Code agents only`))
+      .when(!available, (el) => el.tooltip(`${program?.name ?? "This agent"}: its folder isn't known, so its skills can't be shown`))
       .child(div().w(12).text_size(11).text_color(t.accent).child(this.sel === id ? "✓" : ""))
       .child(program === undefined ? div().w(14).flex_none().text_size(12).text_color(t.dim).child("◎")
         : programIcon(program, 14, available ? t.foreground : t.dim))
@@ -138,7 +140,7 @@ export default class SkillTree extends View {
     const list = v_flex().id("pick-list").w(320).max_h(340).overflow_y_scrollbar().p(4).mt(4).gap(1)
       .rounded(8).border(1).border_color(t.border).bg(t.raised).shadow_lg()
       .children(this.entries.map((e) => option(e.address, e.label, e.program,
-        !e.available ? "Claude Code only" : e.focused ? "focused" : "", e.available)))
+        !e.browsable ? "folder unknown" : e.focused ? "focused" : !e.available ? ".agents skills" : "", e.browsable)))
       .child(div().h(1).my(4).bg(t.border))
       .child(option(GLOBAL, "Global", undefined, "installed skills"));
     const trigger = h_flex().id("pick-trigger").w(320).h(28).px(10).gap(8).items_center().rounded(6)
