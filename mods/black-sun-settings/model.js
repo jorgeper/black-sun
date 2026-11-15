@@ -29,6 +29,7 @@ export const HOTKEYS = [
   { keys: "cmd-shift-x", action: "spaces-tree.new-codex", label: "New Codex agent in this space" },
   { keys: "cmd-shift-r", action: "spaces-tree.auto-name", label: "Auto-name the focused agent" },
   { keys: "cmd-shift-a", action: "spaces-tree.auto-name-all", label: "Auto-name every agent" },
+  { keys: "cmd-shift-f", action: "spaces-tree.open-finder", label: "Open the focused agent's folder in Finder" },
 ];
 
 // Each hotkey with the key its action has now (global or this layout's section), or null.

@@ -94,11 +94,14 @@ export default class Spaces extends View {
     this.request = shared("agent-names.request")?.at ?? 0;
     // The space menu's "start this agent here" (sidebar-menu), last one handled.
     this.started = shared("black-sun.start")?.at ?? 0;
+    // The agent menu's "Open in Finder" (sidebar-menu), last one handled.
+    this.revealed = shared("black-sun.finder")?.at ?? 0;
     cx.spawn(async (cx) => {
       for (;;) {
         const c = await nextCommand();
         if (c === "auto-name-all") { this.startAutoNameAll(cx); continue; }
         if (c.startsWith("new-")) { this.startAgent(c.slice(4)); continue; }
+        if (c === "open-finder") { this.openFinder(agents().find((x) => x.focused)); continue; }
         const a = c === "auto-name" && agents().find((x) => x.focused);
         if (a) this.startAutoName(a, cx);
       }
@@ -236,6 +239,11 @@ export default class Spaces extends View {
       const a = !req.all && agents().find((x) => x.address === req.terminal);
       if (req.all) this.startAutoNameAll(cx);
       else if (a) this.startAutoName(a, cx);
+    }
+    const finder = shared("black-sun.finder");
+    if (finder?.at > this.revealed) {
+      this.revealed = finder.at;
+      this.openFinder(agents().find((x) => x.address === finder.terminal));
     }
     const start = shared("black-sun.start");
     if (start?.at > this.started) {
@@ -445,7 +453,7 @@ export default class Spaces extends View {
       .when(!a.focused, (el) => el.hover((s) => s.bg(t.hover)))
       .cursor_pointer()
       .on_click(() => run("pane.focus", { pane: a.pane }))
-      .on_mouse_down("right", () => openOverlay({ mod: "sidebar-menu", kind: "popup", width: 230, height: 164,
+      .on_mouse_down("right", () => openOverlay({ mod: "sidebar-menu", kind: "popup", width: 230, height: 195,
         props: { kind: "agent", target: { terminal: a.address, tab: a.tab, pane: a.pane } } }))
       .child(div().w(10).flex_none().text_size(11.5).text_right().text_color(t.muted).child(index && index <= 9 ? String(index) : ""))
       .when(Boolean(pic), (el) => el.child(pic))
@@ -494,6 +502,21 @@ export default class Spaces extends View {
     const g = this.git[where(w, panes())];
     openOverlay({ mod: "sidebar-menu", kind: "popup", width: 240, height: 440,
       props: { kind: "space", target: { id: w.id, git: g ? (g.linked ? "linked" : "main") : null } } });
+  }
+
+  // A Finder window on the folder an agent is in now (keys.json "spaces-tree.open-finder", or the
+  // agent menu): its pane's live folder, else its space's. Agents on this computer only.
+  async openFinder(a) {
+    if (!a) { notify({ level: "error", title: "No agent to open in Finder", body: "Focus an agent first." }); return; }
+    if (a.address.includes("/")) { notify({ level: "error", title: "Can't open in Finder", body: "That agent is on another machine." }); return; }
+    const folder = panes().find((p) => p.pane === a.pane)?.cwd || spaces().find((s) => s.id === a.space)?.folder;
+    if (!folder) { notify({ level: "error", title: "Can't open in Finder", body: "Herdr doesn't know that agent's folder." }); return; }
+    try {
+      const r = await exec("open", [folder]);
+      if (r?.code) throw new Error(r.stderr || `open exited ${r.code}`);
+    } catch (e) {
+      notify({ level: "error", title: "Couldn't open Finder", body: String(e?.message ?? e) });
+    }
   }
 
   // A new tab running an agent (keys.json "spaces-tree.new-<program key>", e.g. new-claude, or the

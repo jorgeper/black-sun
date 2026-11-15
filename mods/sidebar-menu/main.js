@@ -5,7 +5,8 @@
 // a terminal, then Herdr's own space items (see model.js). Number keys 1–9 start its agents.
 // An agent's menu: Rename asks for the agent's tab's name; Auto-name asks
 // spaces-tree to name it from what its session is doing (shared "agent-names.request"), and
-// Auto-name all every agent it can. Close closes the agent (its tab, or its pane when it shares one).
+// Auto-name all every agent it can. Open in Finder asks spaces-tree to show the folder the agent
+// is in (shared "black-sun.finder"; agents on this computer only). Close closes the agent (its tab, or its pane when it shares one).
 // ↑/↓ move, Enter runs, Esc closes. Hints show the keys bound in keys.json.
 import { View, div, svg, image } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";
@@ -25,6 +26,7 @@ function shortcut(action) {
 function agentItems(target) {
   const a = agents().find((x) => x.address === target?.terminal);
   const nameable = !!a && !a.address.includes("/") && ["claude", "codex"].includes(a.program?.key);
+  const local = !!a && !a.address.includes("/");
   return [
     { label: "Rename", icon: "mods/workspace-chrome/square-pen.svg", key: shortcut("tab.rename"), on: true,
       go: () => run("tab.rename", { id: target.tab }) },
@@ -34,6 +36,9 @@ function agentItems(target) {
     { label: "Auto-name all", icon: "mods/sidebar-menu/sparkles.svg", key: shortcut("spaces-tree.auto-name-all"), on: true,
       tip: "Name every Claude Code and Codex agent after what it's doing now",
       go: () => setShared("agent-names.request", { all: true, at: Date.now() }) },
+    { label: "Open in Finder", icon: "mods/workspace-chrome/folder.svg", key: shortcut("spaces-tree.open-finder"), on: local,
+      tip: local ? "Show the folder this agent is in" : "Agents on this computer only",
+      go: () => setShared("black-sun.finder", { terminal: target.terminal, at: Date.now() }) },
     // Close the agent: its whole tab when it's alone there (as the tab menu's Close), else only its
     // pane, so the tab's other panes keep running. Herdr confirms when something is running.
     closeItem(target),

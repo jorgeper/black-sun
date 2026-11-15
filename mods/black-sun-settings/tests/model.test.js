@@ -16,12 +16,13 @@ test("normalize fills defaults and keeps only sane values", () => {
   assert.deepEqual(USAGE_MINUTES, [1, 5, 15, 30]);
 });
 
-test("HOTKEYS are black-sun's four ⌘⇧ keys", () => {
+test("HOTKEYS are black-sun's five ⌘⇧ keys", () => {
   assert.deepEqual(HOTKEYS.map((h) => [h.keys, h.action]), [
     ["cmd-shift-c", "spaces-tree.new-claude"],
     ["cmd-shift-x", "spaces-tree.new-codex"],
     ["cmd-shift-r", "spaces-tree.auto-name"],
     ["cmd-shift-a", "spaces-tree.auto-name-all"],
+    ["cmd-shift-f", "spaces-tree.open-finder"],
   ]);
 });
 
@@ -31,7 +32,7 @@ test("hotkeyState says which key each action has in global or this layout's sect
     { section: "global", keys: "cmd-shift-x", action: "spaces-tree.new-codex" },
     { section: "layout:other", keys: "cmd-shift-c", action: "spaces-tree.new-claude" },
   ];
-  assert.deepEqual(hotkeyState(keys, "black-sun").map((h) => h.bound), [null, "cmd-shift-x", "cmd-shift-r", null]);
+  assert.deepEqual(hotkeyState(keys, "black-sun").map((h) => h.bound), [null, "cmd-shift-x", "cmd-shift-r", null, null]);
 });
 
 test("addHotkeys adds the missing keys to the layout's section and skips keys used for something else", () => {
@@ -41,13 +42,14 @@ test("addHotkeys adds the missing keys to the layout's section and skips keys us
     "layout:black-sun": { "cmd-shift-r": "spaces-tree.auto-name" },
   }, null, 2) + "\n";
   const r = addHotkeys(text, "black-sun");
-  assert.deepEqual(r.added, ["cmd-shift-c", "cmd-shift-x"]);
+  assert.deepEqual(r.added, ["cmd-shift-c", "cmd-shift-x", "cmd-shift-f"]);
   assert.deepEqual(r.taken, ["cmd-shift-a"]);
   const out = JSON.parse(r.text);
   assert.deepEqual(out["layout:black-sun"], {
     "cmd-shift-r": "spaces-tree.auto-name",
     "cmd-shift-c": "spaces-tree.new-claude",
     "cmd-shift-x": "spaces-tree.new-codex",
+    "cmd-shift-f": "spaces-tree.open-finder",
   });
   assert.equal(out.terminal["alt-left"], "send:\u001bb");
   assert.ok(r.text.endsWith("}\n"));
@@ -55,7 +57,7 @@ test("addHotkeys adds the missing keys to the layout's section and skips keys us
 
 test("addHotkeys creates the section, and changes nothing when all are there", () => {
   const r = addHotkeys('{"global": {}}', "black-sun");
-  assert.equal(Object.keys(JSON.parse(r.text)["layout:black-sun"]).length, 4);
+  assert.equal(Object.keys(JSON.parse(r.text)["layout:black-sun"]).length, 5);
   const again = addHotkeys(r.text, "black-sun");
   assert.deepEqual(again.added, []);
   assert.equal(again.text, null);
