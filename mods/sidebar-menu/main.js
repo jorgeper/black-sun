@@ -7,17 +7,28 @@
 // spaces-tree to name it from what its session is doing (shared "agent-names.request"), and
 // Auto-name all every agent it can. Open in Finder asks spaces-tree to show the folder the agent
 // is in (shared "black-sun.finder"; agents on this computer only). Close closes the agent (its tab, or its pane when it shares one).
+// "Add to grid view" puts the agent's terminal in black-sun's grid view (shared
+// "black-sun.sbs" = { on, root, ... }, see the side-by-side mod), at its right
+// edge; "Remove from grid view" takes it out. A space's menu has the same item for all of
+// that space's terminals (a space with only a plain terminal has no agent row to right-click).
+// The grid view bar opens the agent menu for its tabs too (plain terminals included).
 // A space's menu also tags it: one item per space tag (shared "black-sun.tags", see tags.js), and
 // "Edit tags…" opens black-sun's settings, where tags are made.
 // ↑/↓ move, Enter runs, Esc closes. Hints show the keys bound in keys.json.
 import { View, div, svg, image } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";
 import { run, props, closeOverlay, openOverlay, theme, keys, agents, panes, spaces, shared, setShared, knownAgents } from "herdr";
-import { spaceItems } from "./model.js";
+import { spaceItems, besideItems, besideWith } from "./model.js";
 import { KEY as TAGS, normalize as tagState, assign } from "./tags.js";
 
 // The agents Herdr's + menu last found on each machine (that mod keeps them in shared state).
 const KNOWN = "new-menu.agents";
+
+// black-sun's grid view (the side-by-side mod owns the state's shape; see besideWith in model.js).
+const SBS = "black-sun.sbs";
+const besideNow = () => besideItems(shared(SBS));
+// Adds the terminals when any of them is missing from the grid, else takes them all out.
+const besideToggle = (terminals) => setShared(SBS, besideWith(shared(SBS), terminals, !terminals.every((x) => besideNow().includes(x))));
 
 // The key bound to a command, in keys.json's global section or this layout's.
 function shortcut(action) {
@@ -30,6 +41,7 @@ function agentItems(target) {
   const a = agents().find((x) => x.address === target?.terminal);
   const nameable = !!a && !a.address.includes("/") && ["claude", "codex"].includes(a.program?.key);
   const local = !!a && !a.address.includes("/");
+  const beside = besideNow().includes(target?.terminal);
   return [
     { label: "Rename", icon: "mods/workspace-chrome/square-pen.svg", key: shortcut("tab.rename"), on: true,
       go: () => run("tab.rename", { id: target.tab }) },
@@ -42,6 +54,9 @@ function agentItems(target) {
     { label: "Open in Finder", icon: "mods/workspace-chrome/folder.svg", key: shortcut("spaces-tree.open-finder"), on: local,
       tip: local ? "Show the folder this agent is in" : "Agents on this computer only",
       go: () => setShared("black-sun.finder", { terminal: target.terminal, at: Date.now() }) },
+    { label: beside ? "Remove from grid view" : "Add to grid view", icon: "mods/side-by-side/grid.svg", key: "", on: !!target?.terminal,
+      tip: beside ? "Take it out of the grid view; it keeps running" : "Show it next to the others in the grid view (the switch at the top right)",
+      go: () => besideToggle([target.terminal]) },
     // Close the agent: its whole tab when it's alone there (as the tab menu's Close), else only its
     // pane, so the tab's other panes keep running. Herdr confirms when something is running.
     closeItem(target),
@@ -89,12 +104,23 @@ export default class SidebarMenu extends View {
     const p = props() ?? {};
     if (p.kind !== "space") return agentItems(p.target);
     const tags = tagState(shared(TAGS));
-    return spaceItems(this.known, p.target?.git ?? null, p.target?.id, shortcut, tags.tags, tags.spaces[p.target?.id] ?? null).map((it) => it.header ? it : {
+    // The space's terminals, for its grid view item: "all" once every one of them is there.
+    const tabs = new Set((spaces().find((s) => s.id === p.target?.id)?.tabs ?? []).map((x) => x.id));
+    const mine = panes().filter((x) => x.terminal && tabs.has(x.tab)).map((x) => x.terminal);
+    const beside = !mine.length ? null : mine.every((x) => besideNow().includes(x)) ? "all" : "some";
+    return spaceItems(this.known, p.target?.git ?? null, p.target?.id, shortcut, tags.tags, tags.spaces[p.target?.id] ?? null, beside).map((it) => it.header ? it : {
       ...it, on: true,
-      go: "tag" in it
+      go: it.beside
+        ? () => besideToggle(mine)
+        : "tag" in it
         ? () => setShared(TAGS, assign(tagState(shared(TAGS)), p.target?.id, it.tag))
         : it.settings
-        ? () => openOverlay({ mod: "black-sun-settings", kind: "dialog", width: 480, height: 640 })
+        ? () => {
+            // The settings window, where and as big as it was left (as the Spaces header's gear opens it).
+            const size = shared("black-sun.settings")?.windowSize;
+            const [width, height] = Array.isArray(size) && size[0] > 0 && size[1] > 0 ? size : [640, 760];
+            openOverlay({ mod: "black-sun-settings", kind: "window", key: "black-sun-settings", width, height });
+          }
         : it.agent
         // spaces-tree starts it (shared "black-sun.start"), asking Herdr for the agent's current
         // start command (yolo mode can change it).

@@ -1,0 +1,9 @@
+{
+  "place": "none",
+  "title": "black-sun brand",
+  "cloned_from": {
+    "name": "workspace-chrome",
+    "version": "0.1.15"
+  },
+  "source": "https://github.com/jorgeper/black-sun"
+}

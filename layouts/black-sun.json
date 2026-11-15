@@ -14,7 +14,7 @@
           "id": "brand",
           "type": "block",
           "content": {
-            "mod": "workspace-chrome"
+            "mod": "black-sun-brand"
           },
           "size": {
             "px": 46
@@ -106,15 +106,48 @@
       "type": "column",
       "children": [
         {
-          "id": "tabs",
-          "type": "block",
-          "content": {
-            "mod": "tabs"
-          },
+          "id": "top",
+          "type": "row",
+          "children": [
+            {
+              "id": "tabs",
+              "type": "block",
+              "content": {
+                "mod": "black-sun-tabs"
+              },
+              "window_drag": true
+            },
+            {
+              "id": "sbs-tabs",
+              "type": "block",
+              "content": {
+                "mod": "side-by-side",
+                "props": {
+                  "part": "tabs"
+                }
+              },
+              "hidden": true,
+              "window_drag": true
+            },
+            {
+              "id": "sbs-switch",
+              "type": "block",
+              "content": {
+                "mod": "side-by-side",
+                "props": {
+                  "part": "switch"
+                }
+              },
+              "size": {
+                "px": 96
+              },
+              "window_drag": true
+            }
+          ],
           "size": {
             "px": 42
           },
-          "window_drag": true
+          "resizable": false
         },
         {
           "id": "work-body",
@@ -136,18 +169,47 @@
                   },
                   "background": "background",
                   "border": {
-                    "width": 1,
+                    "width": 2,
                     "color": "border"
                   },
                   "focus": {
-                    "width": 1,
-                    "color": "accent"
+                    "width": 2,
+                    "color": "#8b7cf6"
                   },
-                  "radius": 10,
+                  "radius": 0,
                   "gap": 8,
                   "lone": true
                 }
               }
+            },
+            {
+              "id": "sbs",
+              "type": "row",
+              "children": [
+                {
+                  "id": "sbs-empty",
+                  "type": "block",
+                  "content": {
+                    "mod": "side-by-side",
+                    "props": {
+                      "part": "empty"
+                    }
+                  }
+                }
+              ],
+              "hidden": true,
+              "gap": 8
+            },
+            {
+              "id": "sbs-arrange",
+              "type": "block",
+              "content": {
+                "mod": "side-by-side",
+                "props": {
+                  "part": "arrange"
+                }
+              },
+              "hidden": true
             },
             {
               "id": "panel",

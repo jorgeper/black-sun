@@ -1,0 +1,9 @@
+{
+  "place": "none",
+  "title": "black-sun tabs",
+  "cloned_from": {
+    "name": "tabs",
+    "version": "0.1.15"
+  },
+  "source": "https://github.com/jorgeper/black-sun"
+}

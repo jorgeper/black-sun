@@ -4,7 +4,26 @@
 
 export const KEY = "black-sun.settings";
 export const USAGE_MINUTES = [1, 5, 15, 30];
-export const DEFAULTS = { sync: true, rowWords: 5, tabWords: 3, haiku: true, usageMinutes: 5 };
+// highlight: the color of the focused agent's row in the sidebar and the focused card and tab in
+// grid view (spaces-tree and side-by-side read it). It is one of the selected palette's colors
+// (palettes.js): highlightSlot is its place there, highlight what that is now.
+// terminals: a space lists its plain terminals too, not only its agents (spaces-tree).
+// emptyAdd: a space with no agents shows an "Add terminal or agent" row in its box (spaces-tree).
+// keepSpaces: a space stays when its last terminal or agent is closed, empty, until it is closed
+// itself (spaces-tree empty.js: a hidden placeholder tab keeps it).
+// numbers: the number before each agent and terminal, and what ⌘1–9 go to: "global" (1, 2, 3, …
+// down the whole sidebar) or "local" (a tab's place in its own space) (spaces-tree numbers.js).
+// wash: gradients on spaces: a space's row has its tag color coming in from the left in place of
+// the square (spaces-tree).
+// fade: gradients on agents and terminals: the focused one fades from its space's tag color into
+// the highlight (spaces-tree, side-by-side).
+// glow: what an agent is doing shows as a color coming in from the right of its row, tab and card
+// header (spaces-tree, side-by-side): working yellow, done blue, needs you red, idle gray.
+// pulse: a working agent's glow slowly brightens and dims (needs glow).
+// windowSize: how big the settings window opens ([width, height]; spaces-tree reads it), one of
+// WINDOW_SIZES.
+export const WINDOW_SIZES = [[520, 640], [640, 760], [760, 860], [900, 960], [1040, 1040]];
+export const DEFAULTS = { sync: true, rowWords: 5, tabWords: 3, haiku: true, usageMinutes: 5, highlight: "#8b7cf6", highlightSlot: 7, terminals: true, emptyAdd: true, keepSpaces: true, numbers: "global", wash: true, fade: true, glow: true, pulse: true, windowSize: WINDOW_SIZES[1] };
 export const ROW_RANGE = [3, 8];
 export const TAB_RANGE = [2, 4];
 
@@ -20,7 +39,24 @@ export function normalize(raw) {
     tabWords: Math.min(rowWords, num(r.tabWords, DEFAULTS.tabWords, TAB_RANGE)),
     haiku: bool(r.haiku, DEFAULTS.haiku),
     usageMinutes: USAGE_MINUTES.includes(r.usageMinutes) ? r.usageMinutes : DEFAULTS.usageMinutes,
+    highlight: /^#[0-9a-f]{6}$/i.test(r.highlight) ? r.highlight.toLowerCase() : DEFAULTS.highlight,
+    highlightSlot: Number.isInteger(r.highlightSlot) && r.highlightSlot >= 0 && r.highlightSlot < 64 ? r.highlightSlot : DEFAULTS.highlightSlot,
+    terminals: bool(r.terminals, DEFAULTS.terminals),
+    emptyAdd: bool(r.emptyAdd, DEFAULTS.emptyAdd),
+    keepSpaces: bool(r.keepSpaces, DEFAULTS.keepSpaces),
+    numbers: r.numbers === "local" ? "local" : "global",
+    wash: bool(r.wash, DEFAULTS.wash),
+    fade: bool(r.fade, DEFAULTS.fade),
+    glow: bool(r.glow, DEFAULTS.glow),
+    pulse: bool(r.pulse, DEFAULTS.pulse),
+    windowSize: WINDOW_SIZES.find((x) => x[0] === r.windowSize?.[0] && x[1] === r.windowSize?.[1]) ?? DEFAULTS.windowSize,
   };
+}
+
+// The window size one step bigger (dir 1) or smaller (-1) than `size`; the same at either end.
+export function resized(size, dir) {
+  const at = Math.max(0, WINDOW_SIZES.findIndex((x) => x[0] === size?.[0] && x[1] === size?.[1]));
+  return WINDOW_SIZES[Math.min(WINDOW_SIZES.length - 1, Math.max(0, at + dir))];
 }
 
 // black-sun's own keys, for the layout's section of keys.json.
@@ -32,6 +68,17 @@ export const HOTKEYS = [
   { keys: "cmd-shift-f", action: "spaces-tree.open-finder", label: "Open the focused agent's folder in Finder" },
 ];
 
+// ⌘1–9 go to the agent or terminal with that number (spaces-tree `go-<n>`, which follows the
+// "numbers" setting). `over`: what Herdr binds that key to in global, which these replace while
+// this layout shows (a layout's section wins over global).
+export const NUMBER_KEYS = Array.from({ length: 9 }, (_x, i) => ({ keys: `cmd-${i + 1}`, action: `spaces-tree.go-${i + 1}`, over: `tab.select:${i + 1}` }));
+
+// How many of ⌘1–9 go through spaces-tree now (0–9).
+export function numberKeyState(keys, layout) {
+  const mine = (keys ?? []).filter((k) => k.section === `layout:${layout}`);
+  return NUMBER_KEYS.filter((h) => mine.some((k) => k.action === h.action)).length;
+}
+
 // Each hotkey with the key its action has now (global or this layout's section), or null.
 export function hotkeyState(keys, layout) {
   const mine = (keys ?? []).filter((k) => k.section === "global" || k.section === `layout:${layout}`);
@@ -39,7 +86,8 @@ export function hotkeyState(keys, layout) {
 }
 
 // keys.json's text with the missing hotkeys added to `layout:<layout>`: { text (null when nothing
-// changes), added, taken }. A key already doing something else (there or in global) is left alone.
+// changes), added, taken }. A key already doing something else (there or in global) is left alone;
+// ⌘1–9 are taken over from Herdr's own tab.select, and left alone if they do anything else.
 export function addHotkeys(text, layout) {
   let json;
   try { json = JSON.parse(text); } catch { throw new Error("keys.json isn't valid JSON, so it was left as it is."); }
@@ -50,9 +98,9 @@ export function addHotkeys(text, layout) {
   const has = (action) => Object.values(section).includes(action) || Object.values(global).includes(action);
   const added = [];
   const taken = [];
-  for (const h of HOTKEYS) {
-    if (has(h.action)) continue;
-    if (section[h.keys] || global[h.keys]) { taken.push(h.keys); continue; }
+  for (const h of [...HOTKEYS, ...NUMBER_KEYS]) {
+    if (h.over ? Object.values(section).includes(h.action) : has(h.action)) continue;
+    if (section[h.keys] || (global[h.keys] && global[h.keys] !== h.over)) { taken.push(h.keys); continue; }
     section[h.keys] = h.action;
     added.push(h.keys);
   }

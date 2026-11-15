@@ -3,15 +3,19 @@
 // (which tags a space) and spaces-tree (which draws them): a mod can only import from its own
 // folder, so change all three together.
 //
-// Shared state "black-sun.tags": { style, default, tags: [{ id, name, color }], spaces: { <space id>: <tag id> } }.
+// Shared state "black-sun.tags": { style, default, tags: [{ id, name, color, slot }], spaces: { <space id>: <tag id> } }.
+// A tag's color is one of the selected palette's ("black-sun.palettes", black-sun-settings'
+// palettes.js): `slot` is its place there, `color` what that is now, so a mod that only draws
+// reads `color`. A tag from before there were palettes has no slot until recolor() gives it one.
 // A space has one tag or none. style "square": a colored square before the name; "row": the
 // whole row in the tag's color. default: the tag a new space starts with (a tag id), or null.
 
 export const KEY = "black-sun.tags";
 export const STYLES = ["square", "row"];
-// The colors a tag can have: the sidebar's avatar colors, plus red and yellow.
+// The colors a tag has when no palette is given: the first palette's first eight.
 export const COLORS = ["#5b8def", "#22a99a", "#3fae6a", "#d4a72c", "#e3814f", "#e5534b", "#d9649a", "#8b7cf6"];
 const HEX = /^#[0-9a-f]{6}$/i;
+const slotOf = (v) => (Number.isInteger(v) && v >= 0 && v < 64 ? v : null);
 
 // Anything unreadable becomes no tags; tags without an id go, a bad color becomes the first one,
 // and a space tagged with a tag that no longer exists is untagged.
@@ -22,7 +26,8 @@ export function normalize(raw) {
   for (const t of Array.isArray(r.tags) ? r.tags : []) {
     if (!t || typeof t.id !== "string" || !t.id || seen.has(t.id)) continue;
     seen.add(t.id);
-    tags.push({ id: t.id, name: typeof t.name === "string" ? t.name : "", color: HEX.test(t.color) ? t.color.toLowerCase() : COLORS[0] });
+    const slot = slotOf(t.slot);
+    tags.push({ id: t.id, name: typeof t.name === "string" ? t.name : "", color: HEX.test(t.color) ? t.color.toLowerCase() : COLORS[0], ...(slot === null ? {} : { slot }) });
   }
   const spaces = {};
   const given = r.spaces && typeof r.spaces === "object" ? r.spaces : {};
@@ -39,18 +44,30 @@ export function tagOf(state, space) {
   return state.tags.find((t) => t.id === id) ?? null;
 }
 
-// A new tag at the end, in the color the fewest tags use. Returns { state, id }.
-export function addTag(state, name = "") {
+// A new tag at the end, in the color of the palette (`colors`) the fewest tags use. Returns { state, id }.
+export function addTag(state, name = "", colors = COLORS) {
   const n = state.tags.reduce((m, t) => Math.max(m, Number(/^t(\d+)$/.exec(t.id)?.[1] ?? 0)), 0) + 1;
   const uses = (c) => state.tags.filter((t) => t.color === c).length;
-  const color = COLORS.reduce((best, c) => (uses(c) < uses(best) ? c : best));
+  const slot = colors.reduce((best, c, i) => (uses(c) < uses(colors[best]) ? i : best), 0);
   const id = `t${n}`;
-  return { state: { ...state, tags: [...state.tags, { id, name, color }] }, id };
+  return { state: { ...state, tags: [...state.tags, { id, name, color: colors[slot], slot }] }, id };
 }
 
-// A tag's name or color changed.
+// A tag's name or color changed. A color given without its slot leaves the tag with none.
 export function updateTag(state, id, patch) {
-  return normalize({ ...state, tags: state.tags.map((t) => (t.id === id ? { ...t, ...patch, id } : t)) });
+  const loose = "color" in patch && !("slot" in patch) ? { slot: null } : {};
+  return normalize({ ...state, tags: state.tags.map((t) => (t.id === id ? { ...t, ...loose, ...patch, id } : t)) });
+}
+
+// Every tag in the palette's colors (`colors`): each takes the color at its slot; one with no slot
+// yet takes the place of the color closest to its own.
+export function recolor(state, colors) {
+  const rgb = (hex) => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
+  const far = (a, b) => rgb(a).reduce((sum, v, i) => sum + (v - rgb(b)[i]) ** 2, 0);
+  return { ...state, tags: state.tags.map((t) => {
+    const slot = (t.slot ?? colors.reduce((best, c, i) => (far(c, t.color) < far(colors[best], t.color) ? i : best), 0)) % colors.length;
+    return { ...t, color: colors[slot], slot };
+  }) };
 }
 
 // The tag gone, and every space that had it untagged.

@@ -1,7 +1,7 @@
 // Run: node --test mods/sidebar-menu/tests/*.test.js
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { spaceItems } from "../model.js";
+import { spaceItems, besideItems, besideWith } from "../model.js";
 
 const known = [
   { key: "claude", name: "Claude Code", icon: "icons/claude.svg", tint: false, run: ["claude"], installed: true },
@@ -47,3 +47,25 @@ test("spaceItems: each tag is an item under Tag; the space's own has ✓ and unt
   ]);
   assert.equal(items.at(-1).label, "Close");
 });
+
+test("spaceItems: a space with terminals can go into, or out of, grid view", () => {
+  const label = (beside) => spaceItems(known, null, "s1", keyOf, [], null, beside).find((i) => i.beside)?.label ?? null;
+  assert.equal(label(null), null);
+  assert.equal(label("some"), "Add to grid view");
+  assert.equal(label("all"), "Remove from grid view");
+});
+
+test("besideItems, besideWith: terminals join at the grid's right edge, or leave; the rest of the state is kept", () => {
+  assert.deepEqual(besideItems(undefined), []);
+  let s = besideWith(undefined, ["t1", "t2"], true);
+  assert.deepEqual(s, { root: { id: "n1", dir: "row", items: ["t1", "t2"] } });
+  assert.deepEqual(besideWith({ on: true, root: "t1" }, ["t1"], true), { on: true, root: "t1" });
+  // A grid that is a column: the new ones are beside it, in a row around it.
+  const col = { id: "n4", dir: "col", items: ["t1", { id: "n2", dir: "row", items: ["t2", "t5"] }] };
+  s = besideWith({ on: true, root: col }, ["t2", "t3"], true);
+  assert.deepEqual(s, { on: true, root: { id: "n5", dir: "row", items: [col, "t3"] } });
+  assert.deepEqual(besideItems(s), ["t1", "t2", "t5", "t3"]);
+  assert.deepEqual(besideWith(s, ["t5", "t3"], false), { on: true, root: { id: "n4", dir: "col", items: ["t1", "t2"] } });
+  assert.deepEqual(besideWith(s, ["t1", "t2", "t5", "t3"], false), { on: true, root: null });
+});
+

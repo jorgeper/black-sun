@@ -2,7 +2,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { COLORS, normalize, tagName, tagOf, addTag, updateTag, removeTag, assign, setStyle, setDefault, tagNew, contrast, ink } from "../tags.js";
+import { COLORS, normalize, tagName, tagOf, addTag, updateTag, removeTag, assign, recolor, setStyle, setDefault, tagNew, contrast, ink } from "../tags.js";
 
 test("normalize: nothing saved is no tags, squares", () => {
   assert.deepEqual(normalize(undefined), { style: "square", default: null, tags: [], spaces: {} });
@@ -27,12 +27,29 @@ test("normalize: keeps sane tags, fixes bad colors, drops tags without an id and
 test("addTag: a new id each time, in the least used color", () => {
   let { state, id } = addTag(normalize(null), "ephemeral");
   assert.equal(id, "t1");
-  assert.deepEqual(state.tags, [{ id: "t1", name: "ephemeral", color: COLORS[0] }]);
+  assert.deepEqual(state.tags, [{ id: "t1", name: "ephemeral", color: COLORS[0], slot: 0 }]);
   ({ state, id } = addTag(state));
   assert.deepEqual([id, state.tags[1].color, state.tags[1].name], ["t2", COLORS[1], ""]);
   // An id is never reused, even after the tag before it went.
   ({ state, id } = addTag(removeTag(state, "t1")));
   assert.equal(id, "t3");
+});
+
+test("slots: a tag remembers its place in the palette, and recolor() follows the palette", () => {
+  const warm = ["#aa0000", "#bb5500", "#cc9900"];
+  let s = addTag(addTag(normalize(null), "a", warm).state, "b", warm).state;
+  assert.deepEqual(s.tags.map((t) => [t.color, t.slot]), [["#aa0000", 0], ["#bb5500", 1]]);
+  // Picked from the palette: color and slot together. A bare color leaves no slot.
+  s = updateTag(s, "t1", { color: warm[2], slot: 2 });
+  assert.deepEqual([s.tags[0].color, s.tags[0].slot], ["#cc9900", 2]);
+  assert.equal("slot" in updateTag(s, "t1", { color: "#123456" }).tags[0], false);
+  assert.equal(normalize({ tags: [{ id: "t1", color: "#123456", slot: -1 }] }).tags[0].slot, undefined);
+  // Another palette: the same places, its colors; a place past its end wraps.
+  const cool = ["#0000aa", "#0055bb"];
+  assert.deepEqual(recolor(s, cool).tags.map((t) => [t.color, t.slot]), [["#0000aa", 0], ["#0055bb", 1]]);
+  // A tag from before palettes: the place of the closest color.
+  const old = normalize({ tags: [{ id: "t1", name: "x", color: "#c09000" }] });
+  assert.deepEqual(recolor(old, warm).tags, [{ id: "t1", name: "x", color: "#cc9900", slot: 2 }]);
 });
 
 test("assign, tagOf: one tag per space; null untags; an unknown tag untags", () => {

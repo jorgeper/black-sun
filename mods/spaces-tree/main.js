@@ -3,17 +3,26 @@
 // them all. Folds are kept per space. Otherwise as `spaces`: worktrees under their checkout,
 // grouped by machine when more than one is known. Instead of a lettered avatar, a space shows
 // its tag (shared "black-sun.tags", see tags.js; made in black-sun's settings, given from the
-// space's menu): a square in the tag's color (hollow when untagged), or, with the "row" style,
+// space's menu): a square in the tag's color (hollow when untagged; with gradients on, the color
+// coming in from the row's left edge instead), or, with the "row" style,
 // the whole row in that color with text that reads on it. A space made from now on starts with
 // the default tag, when one is set (the spaces already known are kept in localStorage "tags.seen").
+// While black-sun's grid view is on (shared "black-sun.sbs", the side-by-side mod), the
+// agents shown there are marked, their spaces are the selected ones, and a click on one focuses
+// it there. Dragging an agent row picks it up for that mod's arrange view (state `carry`), which
+// opens to take the drop.
+// A space stays when its last terminal is closed (empty.js; black-sun-settings "Spaces stay when empty").
 // Click to switch, right-click for its menu, drag to reorder; click an agent to focus it.
 
 import { View, div, svg, image } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";
-import { spaces, machines, panes, agents, run, openOverlay, exec, hc, theme, shared, setShared, watchFolder, window, layout, nextCommand, notify, knownAgents } from "herdr";
+import { spaces, machines, panes, agents, focused, run, openOverlay, exec, hc, theme, shared, setShared, watchFolder, window, layout, nextCommand, notify, knownAgents } from "herdr";
 import { syncTargets, shortTitle, rowLabel, nameable, nameOptions, NEW } from "./names.js";
 import { autoName, shortenTitle } from "./autoname.js";
 import { duration, track } from "./times.js";
+import { layers, glowing, wash } from "./fade.js";
+import { mode as numberMode, numbers, go } from "./numbers.js";
+import { KEY as EMPTY, step as emptyStep, placeholderTabs } from "./empty.js";
 import { KEY as TAGS, normalize as tagState, tagOf, tagName, tagNew, ink } from "./tags.js";
 
 function find(node, id) {
@@ -34,6 +43,21 @@ function place(s, ps) {
   const tabs = new Set((s.tabs ?? []).map((c) => c.id));
   return ps.find((p) => tabs.has(p.tab) && p.cwd)?.cwd || s.folder;
 }
+// black-sun's highlight color (black-sun-settings, "Highlight color"): what marks the focused one.
+function highlight() {
+  const c = shared("black-sun.settings")?.highlight;
+  return /^#[0-9a-f]{6}$/i.test(c) ? c : "#8b7cf6";
+}
+
+// The selected space's background: the theme's "selected", most of the way back to the sidebar's
+// own color, so it reads as selected without being the brightest thing in the list.
+function quiet(t) {
+  const rgb = (c) => (/^#[0-9a-f]{6}$/i.test(c) ? [1, 3, 5].map((i) => parseInt(c.slice(i, i + 2), 16)) : null);
+  const a = rgb(t.selected), b = rgb(t.chrome);
+  if (!a || !b) return t.selected;
+  return "#" + a.map((v, i) => Math.round(v * 0.28 + b[i] * 0.72).toString(16).padStart(2, "0")).join("");
+}
+
 const rowHeight = ({ tree }) => (tree ? 28 : 30);
 const RAIL_CELL = 32;
 const railCell = (el) => h_flex().flex_none().justify_center().child(el);
@@ -105,6 +129,12 @@ export default class Spaces extends View {
         const c = await nextCommand();
         if (c === "auto-name-all") { this.startAutoNameAll(cx); continue; }
         if (c.startsWith("new-")) { this.startAgent(c.slice(4)); continue; }
+        // ⌘1–9 (keys.json): the tab with that number in the sidebar (numbers.js).
+        if (/^go-\d$/.test(c)) {
+          const to = go(Number(c.slice(3)), spaces(), this.agentsBySpace(), numberMode(shared("black-sun.settings")), (a) => !!this.sbs?.on && this.sbs.items.has(a), placeholderTabs(shared(EMPTY)));
+          if (to) run(to[0], to[1]);
+          continue;
+        }
         if (c === "open-finder") { this.openFinder(agents().find((x) => x.focused)); continue; }
         const a = c === "auto-name" && agents().find((x) => x.focused);
         if (a) this.startAutoName(a, cx);
@@ -433,13 +463,28 @@ export default class Spaces extends View {
     localStorage.setItem("spaces.closed", JSON.stringify([...this.closed]));
   }
 
-  // Agents by space, in agents() order (space, tab, pane), read once per render.
+  // What a space lists, by space, read once per render: its agents, and (a setting, on unless
+  // turned off) its plain terminals too, marked `plain`, with no status. In tab order.
   agentsBySpace() {
     const by = new Map();
-    for (const a of agents()) {
+    const add = (a) => {
       if (!by.has(a.space)) by.set(a.space, []);
       by.get(a.space).push(a);
+    };
+    const mine = agents();
+    for (const a of mine) add(a);
+    if (shared("black-sun.settings")?.terminals === false) return by;
+    const have = new Set(mine.map((a) => a.address));
+    const tabs = new Map(spaces().flatMap((s) => (s.tabs ?? []).map((tab, i) => [tab.id, { space: s.id, at: i }])));
+    let any = false;
+    for (const p of panes()) {
+      const space = tabs.get(p.tab)?.space;
+      if (!p.terminal || have.has(p.terminal) || !space) continue;
+      add({ address: p.terminal, pane: p.pane, tab: p.tab, space, status: null, program: p.program, title: p.title, focused: p.focused, plain: true });
+      any = true;
     }
+    // (sort is stable: panes of one tab stay in the order they came)
+    if (any) for (const list of by.values()) list.sort((a, b) => (tabs.get(a.tab)?.at ?? 0) - (tabs.get(b.tab)?.at ?? 0));
     return by;
   }
 
@@ -447,33 +492,65 @@ export default class Spaces extends View {
   // how long it has been in its status, and the status.
   agentRow(a, tree, t) {
     const pic = agentIcon(a.program, 14, t.foreground);
-    const idle = a.status === "idle" && !a.focused;
-    const index = this.tabsById?.get(a.tab)?.index;
+    // Grid view: shown there now; then a click focuses it there, and it is the focused one
+    // when its terminal has the keyboard.
+    const beside = this.sbs?.on && this.sbs.items.has(a.address);
+    const here = beside ? focused()?.terminal === a.address : a.focused;
+    const idle = a.status === "idle" && !here;
+    const hl = highlight();
+    // Behind the row (fade.js): the focused one fades from its space's tag color into the
+    // highlight, and what the agent is doing glows in from the right. Each is a setting.
+    const tag = tagOf(this.tags ?? tagState(shared(TAGS)), a.space)?.color ?? null;
+    const opts = shared("black-sun.settings");
+    const from = here && opts?.fade !== false ? tag : null;
+    const behind = layers({ focused: here, tag, highlight: hl, status: a.status, opts });
+    const index = this.numbers?.get(a.tab);
     const since = this.changed?.[a.address]?.at;
     return h_flex()
       .id(`space-agent-${a.address}`)
-      .pl(tree ? 41 : 19)
+      .pl(tree ? 30 : 10)
       .pr(8)
-      .h(26)
+      .h(30)
       .flex_none()
       .gap(8)
       .items_center()
-      .rounded(8)
       .text_size(12.5)
-      .when(a.focused, (el) => el.bg(t.raised))
-      .when(!a.focused, (el) => el.hover((s) => s.bg(t.hover)))
+      // The focused one: tinted in the highlight color, with a bar of it down the left.
+      .relative()
+      .border_l(3).border_color(from ?? (here ? hl : hl + "00"))
+      .when(here && !from, (el) => el.bg(hl + "38"))
+      .children(behind.map((l) => {
+        const el = h_flex().absolute().left(0).right(0).top(0).bottom(0)
+          .children(l.slices.map((x) => div().flex_basis(0).flex_grow(x.grow).min_w(0).h_full().bg(x.color)));
+        return l.loop ? el.loop("opacity", l.loop) : el;
+      }))
+      .when(!here, (el) => el.hover((s) => s.bg(t.hover)))
       .cursor_pointer()
-      .on_click(() => run("pane.focus", { pane: a.pane }))
-      .on_mouse_down("right", () => openOverlay({ mod: "sidebar-menu", kind: "popup", width: 230, height: 195,
+      .on_click(() => run("pane.focus", beside ? { terminal: a.address } : { pane: a.pane }))
+      // Dragged: picked up for grid view, whose arrange view opens to take the drop.
+      .on_mouse_down("left", (ev) => { this.grabbed = { address: a.address, from: ev.position }; })
+      .on_mouse_move((ev) => {
+        const g = this.grabbed;
+        if (g?.address !== a.address || Math.hypot(ev.position.x - g.from.x, ev.position.y - g.from.y) <= 8) return;
+        this.grabbed = null;
+        const s = shared("black-sun.sbs");
+        setShared("black-sun.sbs", { ...(s && typeof s === "object" ? s : {}), on: true, arrange: s?.arrange || "drag", carry: a.address });
+      })
+      .on_mouse_down("right", () => openOverlay({ mod: "sidebar-menu", kind: "popup", width: 230, height: 230,
         props: { kind: "agent", target: { terminal: a.address, tab: a.tab, pane: a.pane } } }))
       .child(div().w(10).flex_none().text_size(11.5).text_right().text_color(t.muted).child(index && index <= 9 ? String(index) : ""))
       .when(Boolean(pic), (el) => el.child(pic))
-      .child(div().flex_1().min_w(0).truncate().text_color(idle ? t.muted : t.foreground).child(this.labels.get(a.address)))
-      .when(a.address.includes("/"), (el) => el.child(div().flex_none().text_size(10).text_color(t.dim).child(a.address.split("/")[0])))
+      // The name, then right after it how long it has been in its status: a long name is cut
+      // short, the time always shows. The rest of the row is left for the glow (or the status).
+      .child(div().flex_shrink(1).min_w(0).truncate().text_color(idle ? t.muted : t.foreground).child(this.labels.get(a.address)))
       .when(Boolean(since), (el) => el.child(div().flex_none().text_size(11).text_color(t.dim).child(duration(Date.now() - since))))
+      .child(div().flex_1().min_w(0))
+      .when(a.address.includes("/"), (el) => el.child(div().flex_none().text_size(10).text_color(t.dim).child(a.address.split("/")[0])))
+      .when(beside, (el) => el.child(svg("mods/side-by-side/grid.svg").size(11).flex_none().text_color(t.accent)))
       .child(this.naming?.has(a.address)
         ? svg("mods/workspace-chrome/spinner.svg").size(12).mx(1).flex_none().text_color(t.accent).spin(900)
-        : agentStatus(t, a.status));
+        // With status shown as the glow there is no spinner, dot or badge; their place is kept.
+        : glowing(opts) ? div().w(14).flex_none() : agentStatus(t, a.status));
   }
 
   // A space's fold: its chevron; folded, how many agents, and the most urgent one's state.
@@ -504,7 +581,7 @@ export default class Spaces extends View {
         cx.notify();
       })
       .when(!open && top && top !== "idle", (el) => el.child(agentStatus(t, top, true)))
-      .when(!open, (el) => el.child(String(list.length)))
+      .when(!open && list.length > 0, (el) => el.child(String(list.length)))
       .child(svg(`mods/workspace-chrome/chevron-${open ? "down" : "right"}.svg`).size(11).flex_none());
   }
 
@@ -604,7 +681,33 @@ export default class Spaces extends View {
       if (collapsed) return [this.compact(r, t)];
       const list = this.byspace.get(r.w.id) ?? [];
       const open = !this.closed.has(r.w.id);
-      return [this.row(r, t, list), ...(open ? list.map((a) => this.agentRow(a, r.tree, t)) : [])];
+      // A space and its agents in a box of their own, like a card, so spaces read apart.
+      // The space's own row runs edge to edge; its agents sit inset below it, with room around
+      // and between them, so they read as inside the box.
+      // The space of the agent or terminal with the keyboard has its box's border in the highlight
+      // color, as that one's row and card have: in grid view the space of the focused terminal,
+      // else the shown space.
+      const at = this.sbs?.on ? focused()?.terminal : null;
+      const mine = this.sbs?.on ? !!at && list.some((a) => a.address === at) : r.w.active;
+      return [v_flex().id(`space-box-${r.w.id}`).flex_none().mb(10).bg(t.background)
+        // As thick as a card's border when it is the one; else thin, with the same room around.
+        .when(mine, (el) => el.border(2).border_color(highlight()))
+        .when(!mine, (el) => el.border(1).border_color(t.border).p(1))
+        .child(this.row(r, t, list))
+        .when(open && list.length > 0, (el) => el.child(v_flex().p(6).gap(5).children(list.map((a) => this.agentRow(a, r.tree, t)))))
+        // A space with no agents: a row to add one (a setting, on unless turned off). It shows the
+        // space and opens the menu + in the tab bar opens, which adds to the shown space.
+        // Folded (its own chevron, or fold all), the space is only its row.
+        .when(open && !list.some((a) => !a.plain) && shared("black-sun.settings")?.emptyAdd !== false, (el) => el.child(v_flex().p(6).child(
+          h_flex().id(`space-add-${r.w.id}`).h(30).pl(10).pr(8).gap(8).items_center().text_size(12.5).text_color(t.dim).cursor_pointer()
+            .border(1).border_color(t.border).hover((s) => s.bg(t.hover).text_color(t.foreground))
+            .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
+            .on_click(() => {
+              run("space.select", { id: r.w.id });
+              openOverlay({ mod: "new-menu", kind: "popup", width: 250, height: 512 });
+            })
+            .child(svg("mods/workspace-chrome/plus.svg").size(13).flex_none())
+            .child(div().min_w(0).truncate().child("Add terminal or agent")))))];
     };
     const remote = [...new Set([...rows.map(r => r.w.machine).filter(Boolean), ...this.machines.map(m => m.name), ...Object.keys(this.reconnecting)])].sort();
     const loading = m => {
@@ -626,6 +729,8 @@ export default class Spaces extends View {
       const icon = svg(`mods/workspace-chrome/${m ? "server" : "monitor"}.svg`).size(13).flex_none();
       const badge = div().absolute().right(-3).bottom(-2).size(6).rounded(3).border_1().border_color(t.chrome).bg(connected ? t.ansi2 : t.dim);
       const head = h_flex().id(`machine-${m ?? "local"}`).h(26).flex_none().px(collapsed ? 0 : 8).gap(7).items_center().text_size(11).text_color(t.dim)
+        // Room above every computer after the first, and a little under its name.
+        .when(!collapsed, el => el.mb(4).when(Boolean(m), (x) => x.mt(16)))
         .when(collapsed, el => el.mt(4).w(RAIL_CELL).justify_center().rounded(6).tooltip(login ? `${m} needs a login: run ${login}. Click for Copy.` : m ? `${m} · ${connected ? "connected" : (machine?.state ?? "asleep").replace(/_/g, " ")}` : "This computer"))
         .cursor_pointer().hover(s => s.bg(t.hover))
         .on_click((_e, cx) => {
@@ -693,7 +798,8 @@ export default class Spaces extends View {
   }
 
   row({ w, i, g, tree }, t, list = []) {
-    const on = w.active;
+    // Grid view on: the spaces with something shown there are the selected ones.
+    const on = this.sbs?.on ? this.sbs.spaces.has(w.id) : w.active;
     const fromIndex = this.pressed === null ? -1 : spaces().findIndex(s => s.id === this.pressed);
     // The space's tag: a square before the name, or (style "row") the row itself in its color,
     // with `pen` the text color that reads on it; the active row then has an outline.
@@ -705,17 +811,21 @@ export default class Spaces extends View {
     const square = div().id(`space-tag-${w.id}`).size(18).flex_none().rounded(5)
       .when(Boolean(tag), (el) => el.bg(tag.color).tooltip(tagName(tag)))
       .when(!tag, (el) => el.border(1.5).border_color(t.dim + "88"));
+    // With gradients on spaces (black-sun-settings), a tagged space has its color coming in from
+    // the left edge in place of the square.
+    const washed = !rows && !tree && !!tag && shared("black-sun.settings")?.wash !== false;
     return v_flex()
       .relative()
       .id(`space-${w.id}`)
+      .when(washed, (el) => el.child(h_flex().absolute().left(0).right(0).top(0).bottom(0)
+        .children(wash(tag.color).map((x) => div().flex_basis(0).flex_grow(x.grow).min_w(0).h_full().bg(x.color)))))
       .px(paint ? 6 : 8)
       .h(rowHeight({ tree }))
       .flex_none()
       .justify_center()
-      .rounded(8)
       .when(Boolean(paint), (el) => el.bg(paint).border(2).border_color(on ? t.foreground : paint))
       .when(Boolean(paint) && !on, (el) => el.hover((s) => s.opacity(0.88)))
-      .when(!paint && on, (el) => el.bg(t.selected))
+      .when(!paint && on, (el) => el.bg(quiet(t)))
       .when(!paint && !on, (el) => el.hover((s) => s.bg(t.hover)))
       .when(this.pressed === w.id && this.over !== w.id, (el) => el.opacity(0.5))
       .when(this.pressed !== null && this.over === w.id && this.pressed !== w.id, (el) => el.child(
@@ -752,10 +862,11 @@ export default class Spaces extends View {
           .gap(9)
           .items_center()
           .when(Boolean(tree), el => el.pl(22).child(svg("mods/workspace-chrome/branch.svg").size(13).text_color(pen ? pen + "b3" : t.dim)))
-          .when(!tree && !rows, el => el.child(square))
+          .when(!tree && !rows && !washed, el => el.child(square))
           .child(div().flex_shrink(0).max_w(150).truncate().text_color(pen ?? t.foreground).child(w.name))
           .child(g ? this.gitTail(g, tree, w.name, t, pen) : div().flex_1())
-          .when(list.length > 0, (el) => el.child(this.spaceFold(w, list, t, pen))),
+          // A space folds when it has something under its row: agents, terminals, or the row to add one.
+          .when(list.length > 0 || shared("black-sun.settings")?.emptyAdd !== false, (el) => el.child(this.spaceFold(w, list, t, pen))),
       );
   }
 
@@ -765,10 +876,9 @@ export default class Spaces extends View {
       .relative()
       .w(RAIL_CELL)
       .h(26)
-      .rounded(6)
       .justify_center()
       .items_center()
-      .when(w.active, (el) => el.bg(t.selected))
+      .when(w.active, (el) => el.bg(quiet(t)))
       .when(!w.active, (el) => el.hover((s) => s.bg(t.hover)))
       .on_click(() => run("space.select", { id: w.id }))
       .child(div().text_color(w.active ? t.foreground : t.muted).child(String(i + 1)))
@@ -781,6 +891,13 @@ export default class Spaces extends View {
     const palette = ["ansi6", "ansi3", "ansi4", "ansi5", "ansi2", "ansi1"];
     const sp = spaces();
     const ids = new Set(sp.map(p => p.id));
+    // Spaces that stay when empty (empty.js): the shown space gets its placeholder tab, and
+    // placeholders are kept put away while their space has something else.
+    const held = shared(EMPTY);
+    const made = emptyStep(sp, this.emptying ?? null, held, Date.now(), shared("black-sun.settings")?.keepSpaces !== false);
+    this.emptying = made.pending;
+    if (made.placeholders !== held) setShared(EMPTY, made.placeholders);
+    for (const [command, args] of made.actions) run(command, args);
     const kept = Object.fromEntries(Object.entries(shared("space.colors") ?? {}).filter(([id]) => ids.has(id)));
     let changed = Object.keys(kept).length !== Object.keys(shared("space.colors") ?? {}).length;
     for (const p of sp) {
@@ -791,16 +908,31 @@ export default class Spaces extends View {
     }
     if (changed) setShared("space.colors", kept);
     this.tags = tagState(shared(TAGS));
+    // Grid view: whether it is on, the terminals shown there, and the spaces they are in.
+    const beside = shared("black-sun.sbs");
+    // Its grid is a tree of splits ({ items }) whose leaves are terminals.
+    const leaves = (n) => (typeof n === "string" ? [n] : Array.isArray(n?.items) ? n.items.flatMap(leaves) : []);
+    const besideItems = new Set(leaves(beside?.root));
+    const besideTabs = new Set(panes().filter((p) => besideItems.has(p.terminal)).map((p) => p.tab));
+    this.sbs = { on: beside?.on === true, items: besideItems,
+      spaces: new Set(sp.filter((s) => (s.tabs ?? []).some((tab) => besideTabs.has(tab.id))).map((s) => s.id)) };
     this.byspace = this.agentsBySpace();
     const tabs = new Map(sp.flatMap((s) => s.tabs ?? []).map((tab) => [tab.id, tab]));
     this.tabsById = tabs;
+    // The number before each row: its tab's, down the whole sidebar or within its space (a setting).
+    this.numbers = numbers(sp, this.byspace, numberMode(shared("black-sun.settings")), placeholderTabs(made.placeholders));
     const seen = track(this.changed ?? {}, [...this.byspace.values()].flat(), Date.now(), (a) => tabs.get(a.tab)?.changed_at ?? null);
     this.changed = seen.changed;
     if (seen.dirty) { try { localStorage.setItem("agents.changed", JSON.stringify(this.changed)); } catch {} }
     const given = this.namesGiven();
     const { rowWords } = nameOptions(shared("black-sun.settings"));
-    this.labels = new Map([...this.byspace.values()].flat().map((a) => [a.address, rowLabel(a, tabs.get(a.tab), given[a.tab], rowWords)]));
-    const withAgents = sp.filter((s) => this.byspace.has(s.id)).map((s) => s.id);
+    this.labels = new Map([...this.byspace.values()].flat().map((a) => [a.address,
+      // A plain terminal is called what its tab is called in the tab bar: the tab's name, or
+      // for one nobody named, its program ("zsh").
+      a.plain ? (/^tb\d+$/.test(tabs.get(a.tab)?.name ?? "tb0") ? a.program?.name || "Terminal" : tabs.get(a.tab).name)
+        : rowLabel(a, tabs.get(a.tab), given[a.tab], rowWords)]));
+    // Fold all: every space with something under its row (with the add row on, that is every space).
+    const withAgents = sp.filter((s) => this.byspace.has(s.id) || shared("black-sun.settings")?.emptyAdd !== false).map((s) => s.id);
     const anyOpen = withAgents.some((id) => !this.closed.has(id));
     return v_flex().size_full().min_h(0).bg(t.chrome).text_size(13)
       .child(h_flex().h(31).pl(16).pr(10).items_center().justify_between().text_size(11.5).text_color(t.dim)
@@ -809,7 +941,7 @@ export default class Spaces extends View {
         .when(!collapsed, el => el.child(div().flex_1()))
         .when(!collapsed && withAgents.length > 0, el => el.child(div().id("space-fold-all").size(26).flex_none().flex().items_center().justify_center().rounded(6)
           .hover(s => s.bg(t.hover).text_color(t.foreground))
-          .tooltip(anyOpen ? "Hide all agents" : "Show all agents")
+          .tooltip(anyOpen ? "Fold every space: only the spaces show" : "Unfold every space")
           .on_click((_e, cx) => {
             for (const id of withAgents) anyOpen ? this.closed.add(id) : this.closed.delete(id);
             this.saveClosed();
@@ -820,12 +952,24 @@ export default class Spaces extends View {
         .when(!collapsed, el => el.child(div().id("bs-settings").size(26).flex_none().flex().items_center().justify_center().rounded(6)
           .hover(s => s.bg(t.hover).text_color(t.foreground))
           .tooltip("black-sun settings")
-          .on_click(() => openOverlay({ mod: "black-sun-settings", kind: "dialog", width: 480, height: 640 }))
+          .on_click(() => {
+            // A window: it can be dragged, and opens where and as big as it was left (its size is a setting).
+            const size = shared("black-sun.settings")?.windowSize;
+            const [width, height] = Array.isArray(size) && size[0] > 0 && size[1] > 0 ? size : [640, 760];
+            openOverlay({ mod: "black-sun-settings", kind: "window", key: "black-sun-settings", width, height });
+          })
           .child(svg("mods/workspace-chrome/settings.svg").size(13))))
         .child(div().id("space-new").size(26).flex_none().flex().items_center().justify_center().rounded(6).hover(s => s.bg(t.hover).text_color(t.foreground))
           .on_click(() => run("space.new")).child(svg("mods/workspace-chrome/plus.svg").size(14))))
       .child(v_flex().flex_1().min_h(0).px(collapsed ? 0 : 8).pb(14).overflow_y_scrollbar().mode("always")
-        .on_mouse_up("left", (_e, cx) => { this.pressed = null; cx.notify(); })
+        .on_mouse_up("left", (_e, cx) => {
+          this.pressed = null;
+          this.grabbed = null;
+          // An agent picked up for grid view and let go back here: not dropped.
+          const s = shared("black-sun.sbs");
+          if (s?.carry) setShared("black-sun.sbs", { ...s, carry: null, arrange: s.arrange === "drag" ? false : s.arrange });
+          cx.notify();
+        })
         .children(this.grouped(t, collapsed)));
   }
 }
