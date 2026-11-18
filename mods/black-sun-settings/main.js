@@ -94,7 +94,7 @@ export default class BlackSunSettings extends View {
     const raw = shared(KEY);
     if (!Number.isInteger(raw?.highlightSlot)) this.set({ highlightSlot: nearest(current(this.pal).colors, this.s.highlight) });
     this.repaint();
-    // Yolo: true, false, "some" (one of the two), null (programs.json unreadable), undefined (reading).
+    // Yolo: true, false, "some" (a mix), null (programs.json unreadable), undefined (reading).
     cx.spawn(async (cx) => {
         try { this.yolo = yoloState(await readTextFile(PROGRAMS())); } catch { this.yolo = null; }
         cx.notify();
@@ -408,9 +408,9 @@ export default class BlackSunSettings extends View {
       .child(heading("SPACE TAGS"))
       .children(this.tagRows(t, row, choiceOf, link))
       .child(heading("NEW AGENTS"))
-      .child(row("yolo", "Start Claude Code and Codex in yolo mode",
+      .child(row("yolo", "Start Claude Code, Codex and Copilot in yolo mode",
         this.yolo === null ? "Couldn't read programs.json"
-          : this.yolo === "some" ? "Only one of them is set to start in yolo mode now; switch to set both"
+          : this.yolo === "some" ? "Only some are set to start in yolo mode now; switch to set all three"
           : "No permission prompts (Codex also skips its sandbox). Every new agent, from any menu or layout; running ones keep their mode",
         toggle("yolo-t", this.yolo === true, (cx) => { if (this.yolo !== undefined && this.yolo !== null) this.setYolo(this.yolo !== true, cx); })))
       .when(!!this.yoloNote, (el) => el.child(div().px(14).pt(2).text_size(11.5).text_color(t.blocked).child(this.yoloNote)))
