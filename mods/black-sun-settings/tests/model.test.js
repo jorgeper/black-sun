@@ -76,12 +76,13 @@ test("addHotkeys refuses a keys.json that isn't JSON", () => {
   assert.throws(() => addHotkeys("{ nope", "black-sun"), /keys\.json/);
 });
 
-test("applyYolo adds the yolo flags to Claude Code's and Codex's start commands in programs.json", async () => {
+test("applyYolo adds the yolo flags to Claude Code's, Codex's and Copilot's start commands in programs.json", async () => {
   const { applyYolo, yoloState } = await import("../model.js");
   const on = applyYolo(null, true);
   assert.deepEqual(JSON.parse(on).programs, {
     claude: { run: ["claude", "--dangerously-skip-permissions"] },
     codex: { run: ["codex", "--no-daemon", "--dangerously-bypass-approvals-and-sandbox"] },
+    copilot: { run: ["copilot", "--yolo"] },
   });
   assert.equal(yoloState(on), true);
   assert.equal(applyYolo(on, true), null);
@@ -95,18 +96,25 @@ test("applyYolo adds the yolo flags to Claude Code's and Codex's start commands 
 test("applyYolo keeps the person's own entries and commands", async () => {
   const { applyYolo, yoloState } = await import("../model.js");
   const mine = JSON.stringify({
-    programs: { claude: { run: ["my-claude"], name: "Mine" }, lazygit: { name: "Git" } },
+    programs: { claude: { run: ["my-claude"], name: "Mine" }, copilot: { run: ["copilot", "--model", "auto"], name: "Copilot" }, lazygit: { name: "Git" } },
     shells: ["xonsh"],
   });
   const on = JSON.parse(applyYolo(mine, true));
   assert.deepEqual(on.programs.claude, { run: ["my-claude", "--dangerously-skip-permissions"], name: "Mine" });
+  assert.deepEqual(on.programs.copilot, { run: ["copilot", "--model", "auto", "--yolo"], name: "Copilot" });
   assert.deepEqual(on.programs.lazygit, { name: "Git" });
   assert.deepEqual(on.shells, ["xonsh"]);
   const off = JSON.parse(applyYolo(JSON.stringify(on), false));
   assert.deepEqual(off.programs.claude, { run: ["my-claude"], name: "Mine" });
+  assert.deepEqual(off.programs.copilot, { run: ["copilot", "--model", "auto"], name: "Copilot" });
   assert.equal(off.programs.codex, undefined);
-  // Only one of the two in yolo: "some".
+  // Only one in yolo: "some".
   assert.equal(yoloState(JSON.stringify({ programs: { claude: { run: ["claude", "--dangerously-skip-permissions"] } } })), "some");
+  assert.equal(yoloState(JSON.stringify({ programs: { copilot: { run: ["copilot", "--yolo"] } } })), "some");
+  assert.equal(yoloState(JSON.stringify({ programs: {
+    claude: { run: ["claude", "--dangerously-skip-permissions"] },
+    codex: { run: ["codex", "--no-daemon", "--dangerously-bypass-approvals-and-sandbox"] },
+  } })), "some");
 });
 
 test("applyYolo refuses a programs.json that isn't JSON", async () => {

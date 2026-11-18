@@ -108,12 +108,13 @@ export function addHotkeys(text, layout) {
   return { text: JSON.stringify({ ...json, [name]: section }, null, 2) + "\n", added, taken };
 }
 
-// Yolo mode: Claude Code and Codex start without permission prompts (Codex without its sandbox
+// Yolo mode: Claude Code, Codex and Copilot start without permission prompts (Codex without its sandbox
 // too). Set in programs.json's `run` (how Herdr starts each agent, for every menu and layout),
 // so it's read from there too. Herdr's own commands, to tell an override from ours.
 export const YOLO = {
   claude: { flag: "--dangerously-skip-permissions", builtin: ["claude"] },
   codex: { flag: "--dangerously-bypass-approvals-and-sandbox", builtin: ["codex", "--no-daemon"] },
+  copilot: { flag: "--yolo", builtin: ["copilot"] },
 };
 
 function parsePrograms(text) {
@@ -124,7 +125,7 @@ function parsePrograms(text) {
   return json;
 }
 
-// true when both start in yolo mode, false when neither, "some" for one; null if unreadable.
+// true when all start in yolo mode, false when none, "some" for a mix; null if unreadable.
 export function yoloState(text) {
   let json;
   try { json = parsePrograms(text); } catch { return null; }
